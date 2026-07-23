@@ -1,0 +1,28 @@
+# Changelog
+
+All notable changes to this project are documented here.
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [1.0.0] - 2026-07-23
+
+First public release.
+
+### Added
+- Always-on-top floating HUD of live Claude Code sessions, refreshing every 2s.
+- Per-session status: working · waiting-for-input · done · interrupted.
+- "Needs you" alerts surfacing the exact wait reason (input needed, dialog open,
+  permission prompts) from Claude Code's session state; waiting sessions sort to the top.
+- Model and permission mode per session (`default` / `plan` / `auto-accept` / `bypass`), color-coded.
+- Sub-agent tracking (running vs. finished, including background agents).
+- **List** and **bubble** view modes; the bubble shows a one-line-per-session summary and
+  glows amber when input is needed.
+- Click a session to focus its Terminal tab.
+- Auto-detection of every `~/.claude*` config directory.
+- Settings: opacity, pop-open-when-input-needed, hide idle sessions, float-above-all,
+  compact view. Window position and preferences persist across launches.
+
+[Unreleased]: https://github.com/renereose/claudewatch/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/renereose/claudewatch/releases/tag/v1.0.0

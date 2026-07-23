@@ -1,0 +1,13 @@
+# Build artifacts
+.build/
+Claudewatch.app/
+Claudewatch.zip
+*.o
+*.swiftmodule
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/

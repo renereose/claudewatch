@@ -1,0 +1,44 @@
+name: Bug report
+description: Something isn't working right
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What went wrong, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start N Claude Code sessions
+        2. ...
+        3. See ...
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: "e.g. 14.5 (Sonoma)"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How are you running it?
+      options:
+        - Released app (Claudewatch.app)
+        - swift run claudewatch
+        - Built from source (./build.sh)
+    validations:
+      required: true
+  - type: textarea
+    id: dump
+    attributes:
+      label: "`swift run claudewatch --dump` output (optional)"
+      description: Redact anything sensitive — this may include session titles and paths.
+      render: json
