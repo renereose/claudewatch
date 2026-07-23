@@ -42,8 +42,16 @@ logs (`~/.claude/**`) directly and links only against system frameworks.
 - **Sub-agent tracking** — running vs. finished agents, including background agents.
 - **Two modes** — a full **list** or a compact **bubble** you can tuck into a corner.
   The bubble glows amber the moment a session needs input.
-- **Click to focus** — click a session to jump to its terminal. Terminal.app and iTerm2
-  select the exact tab by tty; Warp is brought to the front (it exposes no tab-scripting API).
+- **Click to focus** — click a session to jump to its terminal. Supported terminals:
+
+  | Terminal | Focus |
+  |----------|-------|
+  | Terminal.app | Exact tab (by tty) |
+  | iTerm2 | Exact tab (by tty) |
+  | Warp | App brought to front¹ |
+
+  ¹ Warp exposes no tab-scripting API (no AppleScript dictionary, URL scheme only creates tabs),
+  so per-tab focus isn't possible. Anything else falls back to Terminal.app.
 - **Multi-config aware** — automatically picks up every `~/.claude*` config dir
   (e.g. `CLAUDE_CONFIG_DIR` aliases).
 - **Settings** — opacity, "pop open when input needed", hide idle sessions, float-above-all,
