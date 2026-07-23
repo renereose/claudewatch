@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-07-23
+
+### Fixed
+- Background sub-agents (scout, planner, general-purpose impl, …) launched via the newer async
+  agent system now show as running. It polls completion via `TaskOutput` and leaves
+  `pendingBackgroundAgentCount` at 0, which previously made claudewatch mark running agents done
+  and hide them; running is now derived from launched-minus-terminated. `Task*` orchestration
+  calls no longer overwrite the activity line.
+
 ## [1.1.1] - 2026-07-23
 
 ### Added
@@ -48,7 +57,8 @@ First public release.
 - Settings: opacity, pop-open-when-input-needed, hide idle sessions, float-above-all,
   compact view. Window position and preferences persist across launches.
 
-[Unreleased]: https://github.com/renereose/claudewatch/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/renereose/claudewatch/compare/v1.1.2...HEAD
+[1.1.2]: https://github.com/renereose/claudewatch/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/renereose/claudewatch/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/renereose/claudewatch/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/renereose/claudewatch/compare/v1.0.0...v1.0.1

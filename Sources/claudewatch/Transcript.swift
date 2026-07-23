@@ -15,7 +15,9 @@ func parse(_ path: String) -> [String: Any]? {
     var agentType: [String: String] = [:]
     var doneIds = Set<String>()                    // sync agents whose real result came back
     var asyncIds = Set<String>()                   // bg agents: launched, completion tracked by count
-    var pending = 0                                // latest pendingBackgroundAgentCount
+    var pending = 0                                // latest pendingBackgroundAgentCount (old async system)
+    var sawTaskOutput = false                      // new async system polls bg agents via TaskOutput
+    var asyncDone = 0                              // bg agents whose TaskOutput came back terminal
     for line in text.split(separator: "\n") {
         guard let d = line.data(using: .utf8),
               let row = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else { continue }
@@ -60,13 +62,21 @@ func parse(_ path: String) -> [String: Any]? {
                     if agentDesc[id] == nil { agentOrder.append(id) }
                     agentDesc[id] = input?["description"] as? String ?? "agent"
                     agentType[id] = input?["subagent_type"] as? String ?? "agent"
-                } else { activity = "⚙ " + name }
+                } else if name.hasPrefix("Task") { sawTaskOutput = sawTaskOutput || name == "TaskOutput" }
+                else { activity = "⚙ " + name }   // Task* is orchestration plumbing, not real activity
             case "tool_result":
                 if let id = c["tool_use_id"] as? String {
                     // bg agents return this placeholder at launch, not at completion
                     let body = String(describing: c["content"] ?? "")
                     if body.contains("Async agent launched successfully") { asyncIds.insert(id) }
-                    else { doneIds.insert(id) }
+                    else {
+                        doneIds.insert(id)
+                        // A blocking TaskOutput returns only once its bg agent is terminal.
+                        if body.contains("<status>completed</status>") || body.contains("<status>failed</status>")
+                           || body.contains("<status>stopped</status>") || body.contains("<status>cancelled</status>") {
+                            asyncDone += 1
+                        }
+                    }
                 }
             default: break
             }
@@ -76,14 +86,19 @@ func parse(_ path: String) -> [String: Any]? {
     // `pending` bg agents (launch order) as still running; the rest as done.
     // ponytail: count is authoritative, which-specific-ones is FIFO-approximate. Upgrade if
     // Claude ever logs per-agent completion.
+    // New async system (TaskOutput) doesn't maintain pendingBackgroundAgentCount — it stays 0 while
+    // agents run, which wrongly marks them done. Derive running from launched-minus-terminated instead.
+    // ponytail: FIFO-approximate (last N launched = still running); exact per-agent id mapping isn't
+    // in the logs. Old async logs (no TaskOutput) keep using the authoritative pending count.
+    let running = sawTaskOutput ? max(0, asyncIds.count - asyncDone) : pending
     let asyncOrder = agentOrder.filter { asyncIds.contains($0) }
-    let runningAsync = Set(asyncOrder.suffix(min(pending, asyncOrder.count)))
+    let runningAsync = Set(asyncOrder.suffix(min(running, asyncOrder.count)))
     let agents = agentOrder.suffix(12).map { id -> [String: Any] in
         let done = asyncIds.contains(id) ? !runningAsync.contains(id) : doneIds.contains(id)
         return ["desc": agentDesc[id] ?? "agent", "type": agentType[id] ?? "agent",
                 "done": done, "bg": asyncIds.contains(id)]
     }
-    if state == "done" && pending > 0 { state = "working" }      // bg agents still running
+    if state == "done" && running > 0 { state = "working" }      // bg agents still running
     return ["title": title, "prompt": prompt, "cwd": cwd, "branch": branch,
             "activity": activity, "agents": agents, "state": state, "wait": wait,
             "model": model, "mode": pmode]
