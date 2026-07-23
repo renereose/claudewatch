@@ -45,23 +45,74 @@ func liveSessions(_ base: URL) -> [String: (tty: String, status: String, wait: S
     return live
 }
 
-// Bring the Terminal.app tab on `tty` to the front. (First use prompts for Automation access.)
+// Which GUI terminal owns `tty` — walk the process tree on that tty up to launchd.
+// Warp/iTerm/Terminal appear as an ancestor executable path. Defaults to Terminal.
+func terminalApp(forTTY tty: String) -> String {
+    let dev = tty.replacingOccurrences(of: "/dev/", with: "")
+    let ps = Process(); ps.launchPath = "/bin/ps"; ps.arguments = ["-o", "pid=", "-t", dev]
+    let pipe = Pipe(); ps.standardOutput = pipe; ps.standardError = Pipe()
+    try? ps.run(); ps.waitUntilExit()
+    let pids = (String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? "")
+        .split(whereSeparator: \.isWhitespace).compactMap { Int32($0) }
+    guard var pid = pids.first else { return "Terminal" }
+    while pid > 1 {                                   // ponytail: linear walk, terminals are shallow
+        let q = Process(); q.launchPath = "/bin/ps"; q.arguments = ["-o", "ppid=,command=", "-p", "\(pid)"]
+        let out = Pipe(); q.standardOutput = out; q.standardError = Pipe()
+        try? q.run(); q.waitUntilExit()
+        let line = (String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let lower = line.lowercased()
+        if lower.contains("warp.app") { return "Warp" }
+        if lower.contains("iterm.app") || lower.contains("iterm2") { return "iTerm2" }
+        if lower.contains("terminal.app") { return "Terminal" }
+        guard let ppid = Int32(line.split(whereSeparator: \.isWhitespace).first ?? ""), ppid > 1 else { break }
+        pid = ppid
+    }
+    return "Terminal"
+}
+
+// Bring the terminal tab on `tty` to the front. (First use prompts for Automation access.)
+// Terminal/iTerm select the exact tab by tty; Warp has no per-tab AppleScript, so it's just activated.
 func focusTerminal(_ tty: String) {
     guard !tty.isEmpty else { return }
-    let script = """
-    tell application "Terminal"
-      activate
-      repeat with w in windows
-        repeat with t in tabs of w
-          if tty of t is "\(tty)" then
-            set selected of t to true
-            set frontmost of w to true
-            return
-          end if
-        end repeat
-      end repeat
-    end tell
-    """
+    let script: String
+    switch terminalApp(forTTY: tty) {
+    case "Warp":
+        script = "tell application \"Warp\" to activate"   // ponytail: no per-tab API, app-level focus only
+    case "iTerm2":
+        script = """
+        tell application "iTerm2"
+          activate
+          repeat with w in windows
+            repeat with t in tabs of w
+              repeat with s in sessions of t
+                if tty of s is "\(tty)" then
+                  select w
+                  select t
+                  select s
+                  return
+                end if
+              end repeat
+            end repeat
+          end repeat
+        end tell
+        """
+    default:
+        script = """
+        tell application "Terminal"
+          activate
+          repeat with w in windows
+            repeat with t in tabs of w
+              if tty of t is "\(tty)" then
+                set selected of t to true
+                set frontmost of w to true
+                return
+              end if
+            end repeat
+          end repeat
+        end tell
+        """
+    }
     let p = Process(); p.launchPath = "/usr/bin/osascript"; p.arguments = ["-e", script]
     try? p.run()
 }
