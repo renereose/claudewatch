@@ -8,7 +8,7 @@ var cache: [String: (Double, [String: Any])] = [:]
 
 func parse(_ path: String) -> [String: Any]? {
     guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
-    var title = "", prompt = "", cwd = "", activity = "", branch = "", state = "idle"
+    var title = "", prompt = "", cwd = "", activity = "", branch = "", state = "idle", wait = ""
     var model = "", pmode = ""                      // last model + permission mode seen
     var agentOrder: [String] = []                 // subagent tool_use ids, in call order
     var agentDesc: [String: String] = [:]
@@ -41,6 +41,12 @@ func parse(_ path: String) -> [String: Any]? {
         case "assistant":
             let sr = (row["message"] as? [String: Any])?["stop_reason"] as? String ?? ""
             state = (sr == "end_turn") ? "done" : "working"     // end_turn => concluded
+            // A tool that blocks on the user (question / plan approval) is "needs you", not "working".
+            // Last-wins: a later user record (the answer) flips this back to working.
+            let blocking = content.compactMap {
+                ($0["type"] as? String) == "tool_use" ? $0["name"] as? String : nil
+            }.first { $0 == "AskUserQuestion" || $0 == "ExitPlanMode" }
+            if let b = blocking { state = "waiting"; wait = b == "ExitPlanMode" ? "plan review" : "input needed" }
         default: break                                          // system/attachment don't change it
         }
         for c in content {
@@ -79,6 +85,6 @@ func parse(_ path: String) -> [String: Any]? {
     }
     if state == "done" && pending > 0 { state = "working" }      // bg agents still running
     return ["title": title, "prompt": prompt, "cwd": cwd, "branch": branch,
-            "activity": activity, "agents": agents, "state": state,
+            "activity": activity, "agents": agents, "state": state, "wait": wait,
             "model": model, "mode": pmode]
 }

@@ -61,7 +61,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
     }
 
     func userContentController(_ c: WKUserContentController, didReceive m: WKScriptMessage) {
-        if m.name == "focus", let tty = m.body as? String { focusTerminal(tty) }
+        if m.name == "focus", let b = m.body as? [String: Any] {
+            focusSession(tty: b["tty"] as? String ?? "", cwd: b["cwd"] as? String ?? "",
+                         pid: (b["pid"] as? NSNumber)?.int32Value ?? 0)
+        }
         if m.name == "cfg", let s = m.body as? String, let d = s.data(using: .utf8),
            let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] {
             if j["quit"] != nil { NSApp.terminate(nil); return }

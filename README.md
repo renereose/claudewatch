@@ -36,22 +36,30 @@ logs (`~/.claude/**`) directly and links only against system frameworks.
 
 - **Live status per session** — working · waiting-for-input · done · interrupted, updated every 2s.
 - **"Needs you" alerts** — surfaces the exact wait reason (`input needed`, `dialog open`,
-  permission prompts, …) straight from Claude Code's session state, and floats those sessions to the top.
+  permission prompts, plan review, open questions, …) straight from Claude Code's session state,
+  and floats those sessions to the top.
 - **Model & permission mode** — see which model each session runs and whether it's in
   `default`, `plan`, `auto-accept`, or `bypass` mode (color-coded).
 - **Sub-agent tracking** — running vs. finished agents, including background agents.
 - **Two modes** — a full **list** or a compact **bubble** you can tuck into a corner.
   The bubble glows amber the moment a session needs input.
-- **Click to focus** — click a session to jump to its terminal. Supported terminals:
+- **Works with the IDE plugin** — sessions run from the **Cursor** / **VS Code** Claude Code
+  extension are tracked alongside terminal sessions, with the same status, model, mode, and
+  "needs you" alerts.
+- **Click to focus** — click a session to jump to where it lives. Terminal tabs are selected
+  exactly; IDE sessions raise the editor window on that workspace:
 
-  | Terminal | Focus |
-  |----------|-------|
+  | Host | Focus |
+  |------|-------|
   | Terminal.app | Exact tab (by tty) |
   | iTerm2 | Exact tab (by tty) |
   | Warp | App brought to front¹ |
+  | Cursor / VS Code | Editor window for the session's folder² |
 
   ¹ Warp exposes no tab-scripting API (no AppleScript dictionary, URL scheme only creates tabs),
   so per-tab focus isn't possible. Anything else falls back to Terminal.app.
+  ² IDE plugin sessions have no tty; clicking re-opens the workspace folder, which raises the
+  window already on it (or opens one if the folder was closed).
 - **Multi-config aware** — automatically picks up every `~/.claude*` config dir
   (e.g. `CLAUDE_CONFIG_DIR` aliases).
 - **Settings** — opacity, "pop open when input needed", hide idle sessions, float-above-all,

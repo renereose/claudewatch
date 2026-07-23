@@ -88,7 +88,7 @@ let HTML = """
  var S={op:1,autoExpand:1,hideIdle:0,onTop:1,compact:0};   // user settings (persisted via Swift)
  function ago(s){return s<60?s+'s':s<3600?(s/60|0)+'m':(s/3600|0)+'h'}
  function esc(t){let d=document.createElement('div');d.textContent=t||'';return d.innerHTML}
- function focusit(tty){try{window.webkit.messageHandlers.focus.postMessage(tty)}catch(e){}}
+ function focusit(el){try{window.webkit.messageHandlers.focus.postMessage({tty:el.dataset.t,cwd:el.dataset.c,pid:+el.dataset.p})}catch(e){}}
  function post(){try{window.webkit.messageHandlers.cfg.postMessage(JSON.stringify({mode:MODE,pref:S}))}catch(e){}}
  function fit(){try{window.webkit.messageHandlers.cfg.postMessage(JSON.stringify({fit:document.body.scrollHeight}))}catch(e){}}
  // report the header's draggable gaps (bar minus buttons) so Swift can place drag handles there
@@ -118,7 +118,7 @@ let HTML = """
  function card(r){
    var cls=r.state=='waiting'?' wait':r.state=='working'?' on':'';
    var mdl=shModel(r.model),pm=r.mode;
-   return '<div class="c'+cls+'" onclick="focusit(\\''+esc(r.tty)+'\\')">'+
+   return '<div class="c'+cls+'" data-t="'+esc(r.tty)+'" data-c="'+esc(r.cwd||'')+'" data-p="'+(r.pid||0)+'" onclick="focusit(this)">'+
      '<div class=top>'+mark(r)+'<span class=name>'+esc(r.name)+'</span>'+
      (r.branch?'<span class=br>'+esc(r.branch)+'</span>':'')+
      '<span class=ago>'+ago(r.ago)+'</span></div>'+

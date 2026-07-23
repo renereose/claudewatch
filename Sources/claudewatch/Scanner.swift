@@ -29,17 +29,17 @@ func ttyOf(_ pid: Int32) -> String {
 // the pid. status ∈ idle|busy|shell|waiting; waitingFor names what a "waiting" session wants
 // (e.g. "input needed", "dialog open", a permission label) — authoritative, so we skip the
 // transcript for it. -> sid:(tty, status, wait)
-func liveSessions(_ base: URL) -> [String: (tty: String, status: String, wait: String)] {
+func liveSessions(_ base: URL) -> [String: (tty: String, status: String, wait: String, pid: Int32)] {
     let fm = FileManager.default
     let dir = base.appendingPathComponent("sessions")
-    var live: [String: (tty: String, status: String, wait: String)] = [:]
+    var live: [String: (tty: String, status: String, wait: String, pid: Int32)] = [:]
     guard let files = try? fm.contentsOfDirectory(atPath: dir.path) else { return live }
     for f in files where f.hasSuffix(".json") {
         guard let d = try? Data(contentsOf: dir.appendingPathComponent(f)),
               let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any],
               let pid = j["pid"] as? Int32, let sid = j["sessionId"] as? String else { continue }
         if kill(pid, 0) == 0 {                            // process still alive
-            live[sid] = (ttyOf(pid), j["status"] as? String ?? "", j["waitingFor"] as? String ?? "")
+            live[sid] = (ttyOf(pid), j["status"] as? String ?? "", j["waitingFor"] as? String ?? "", pid)
         }
     }
     return live
@@ -117,6 +117,30 @@ func focusTerminal(_ tty: String) {
     try? p.run()
 }
 
+// The pid's executable path — tells which IDE hosts an editor session (its binary lives under
+// ~/.cursor/extensions/… or ~/.vscode/extensions/…).
+func commandOf(_ pid: Int32) -> String {
+    let p = Process(); p.launchPath = "/bin/ps"; p.arguments = ["-o", "command=", "-p", "\(pid)"]
+    let pipe = Pipe(); p.standardOutput = pipe; p.standardError = Pipe()
+    try? p.run(); p.waitUntilExit()
+    return (String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? "")
+        .trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+}
+
+// Focus a session's home: a terminal tab if it has a tty, else the Cursor/VSCode window that hosts it.
+// Editor sessions (the claude-vscode plugin) run under the extension host with no tty.
+func focusSession(tty: String, cwd: String, pid: Int32) {
+    if !tty.isEmpty { focusTerminal(tty); return }
+    let cmd = commandOf(pid)
+    let app = cmd.contains(".cursor") ? "Cursor"
+            : cmd.contains(".vscode") ? "Visual Studio Code" : ""
+    guard !app.isEmpty, !cwd.isEmpty else { return }
+    // Re-opening the workspace folder raises the window already on it (VSCode/Cursor dedupe by root).
+    // ponytail: opens a new window if that folder isn't already open; `code -r <cwd>` is the upgrade path.
+    let p = Process(); p.launchPath = "/usr/bin/open"; p.arguments = ["-a", app, cwd]
+    try? p.run()
+}
+
 // The one call the UI makes: all live sessions across all config roots, newest first,
 // with waiting sessions floated to the top.
 func scan() -> [[String: Any]] {
@@ -142,6 +166,7 @@ func scan() -> [[String: Any]] {
                        ?? proj
             row["name"] = name
             row["tty"] = s.tty
+            row["pid"] = Int(s.pid)                       // for IDE-hosted sessions (no tty): focus by pid+cwd
             row["ago"] = Int(now - mtime)
             // Live status overrides the transcript guess: it knows a dialog is open (waiting)
             // or work is running (busy/shell). idle/unknown -> keep transcript done/interrupted.
