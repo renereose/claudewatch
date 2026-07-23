@@ -42,6 +42,8 @@ let HTML = """
  .name{font-weight:700;color:#e5e7eb;font-size:12px}
  .ago{margin-left:auto;color:#6b7280;font-size:10px;flex:none}
  .br{color:#7c6f9e;font-size:10px}
+ .host{padding:0 4px;border-radius:3px;background:#242833;color:#8a93a3;font-size:9px;flex:none}
+ .host.ide{background:#1e2b26;color:#7fc8a0}
  .meta{margin-top:4px;display:flex;gap:6px;align-items:center;font-size:10px}
  .mdl{color:#7f8794}
  .pm{padding:0 5px;border-radius:4px;background:#242833;color:#9ca3af}
@@ -120,6 +122,7 @@ let HTML = """
    var mdl=shModel(r.model),pm=r.mode;
    return '<div class="c'+cls+'" data-t="'+esc(r.tty)+'" data-c="'+esc(r.cwd||'')+'" data-p="'+(r.pid||0)+'" onclick="focusit(this)">'+
      '<div class=top>'+mark(r)+'<span class=name>'+esc(r.name)+'</span>'+
+     (r.host?'<span class="host'+(['terminal','iterm','warp'].indexOf(r.host)<0?' ide':'')+'">'+esc(r.host)+'</span>':'')+
      (r.branch?'<span class=br>'+esc(r.branch)+'</span>':'')+
      '<span class=ago>'+ago(r.ago)+'</span></div>'+
      (r.state=='waiting'?'<div class=w>▸ needs you · '+esc(r.wait||'input')+'</div>':'')+

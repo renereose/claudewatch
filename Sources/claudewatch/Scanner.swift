@@ -127,13 +127,42 @@ func commandOf(_ pid: Int32) -> String {
         .trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 }
 
-// Focus a session's home: a terminal tab if it has a tty, else the Cursor/VSCode window that hosts it.
+// (badge, macOS app name) for an editor-hosted session, keyed off the claude binary's path
+// (the plugin ships it under ~/.cursor|.vscode|.windsurf/extensions/…). app "" = focus unknown.
+func ideInfo(_ pid: Int32) -> (badge: String, app: String) {
+    let cmd = commandOf(pid)
+    if cmd.contains(".cursor")          { return ("cursor", "Cursor") }
+    if cmd.contains(".windsurf")        { return ("windsurf", "Windsurf") }
+    if cmd.contains(".vscode-insiders") { return ("insiders", "Visual Studio Code - Insiders") }
+    if cmd.contains(".vscode")          { return ("code", "Visual Studio Code") }
+    return ("ide", "")
+}
+
+// Short badge for the GUI terminal on `tty` — terminal | iterm | warp (defaults to terminal).
+func terminalName(_ tty: String) -> String {
+    switch terminalApp(forTTY: tty) {
+    case "Warp":   return "warp"
+    case "iTerm2": return "iterm"
+    default:       return "terminal"
+    }
+}
+
+// The card's host badge (cursor/code/warp/iterm/…). A session's host never changes, and both
+// lookups shell out to `ps`, so memoize by pid — one walk per session for its whole life.
+// ponytail: unbounded like `cache`; prune to live pids if it ever grows to matter.
+var hostCache: [Int32: String] = [:]
+func hostBadge(tty: String, pid: Int32) -> String {
+    if let h = hostCache[pid] { return h }
+    let h = tty.isEmpty ? ideInfo(pid).badge : terminalName(tty)
+    hostCache[pid] = h
+    return h
+}
+
+// Focus a session's home: a terminal tab if it has a tty, else the editor window that hosts it.
 // Editor sessions (the claude-vscode plugin) run under the extension host with no tty.
 func focusSession(tty: String, cwd: String, pid: Int32) {
     if !tty.isEmpty { focusTerminal(tty); return }
-    let cmd = commandOf(pid)
-    let app = cmd.contains(".cursor") ? "Cursor"
-            : cmd.contains(".vscode") ? "Visual Studio Code" : ""
+    let app = ideInfo(pid).app
     guard !app.isEmpty, !cwd.isEmpty else { return }
     // Re-opening the workspace folder raises the window already on it (VSCode/Cursor dedupe by root).
     // ponytail: opens a new window if that folder isn't already open; `code -r <cwd>` is the upgrade path.
@@ -167,6 +196,7 @@ func scan() -> [[String: Any]] {
             row["name"] = name
             row["tty"] = s.tty
             row["pid"] = Int(s.pid)                       // for IDE-hosted sessions (no tty): focus by pid+cwd
+            row["host"] = hostBadge(tty: s.tty, pid: s.pid)   // card badge: cursor/code/warp/iterm/…
             row["ago"] = Int(now - mtime)
             // Live status overrides the transcript guess: it knows a dialog is open (waiting)
             // or work is running (busy/shell). idle/unknown -> keep transcript done/interrupted.

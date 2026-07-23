@@ -45,7 +45,8 @@ logs (`~/.claude/**`) directly and links only against system frameworks.
   The bubble glows amber the moment a session needs input.
 - **Works with the IDE plugin** — sessions run from the **Cursor** / **VS Code** Claude Code
   extension are tracked alongside terminal sessions, with the same status, model, mode, and
-  "needs you" alerts.
+  "needs you" alerts. A small **host badge** on each card names where a session runs
+  (`terminal` / `iterm` / `warp` / `cursor` / `code` / …).
 - **Click to focus** — click a session to jump to where it lives. Terminal tabs are selected
   exactly; IDE sessions raise the editor window on that workspace:
 
