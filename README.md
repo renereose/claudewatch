@@ -54,11 +54,28 @@ logs (`~/.claude/**`) directly and links only against system frameworks.
 
 1. Grab `Claudewatch.zip` from the [latest release](https://github.com/renereose/claudewatch/releases/latest).
 2. Unzip and drag **Claudewatch.app** to `/Applications`.
-3. First launch: right-click → **Open** (it's ad-hoc signed, so Gatekeeper asks once).
+3. **First launch — clear Gatekeeper.** The app is ad-hoc signed, not notarized by Apple,
+   so macOS blocks it on first open ("Apple could not verify…"). Allow it once, either way:
 
-The app needs no runtime — the binary links only macOS system frameworks.
+   **Terminal:**
+   ```sh
+   xattr -dr com.apple.quarantine /Applications/Claudewatch.app
+   open /Applications/Claudewatch.app
+   ```
 
-> On first click-to-focus, macOS will ask for **Automation** permission (to raise the Terminal tab).
+   **or GUI:** try to open it, then go to System Settings → **Privacy & Security** →
+   scroll down → **Open Anyway**.
+
+The app needs no runtime — the binary links only macOS system frameworks. It contains no
+telemetry and only reads your local `~/.claude` logs; the Gatekeeper prompt is purely because
+the project isn't paying for Apple notarization.
+
+> On first click-to-focus, macOS will also ask for **Automation** permission (to raise the Terminal tab).
+
+### Build it yourself
+
+Don't want to trust a prebuilt binary? Build from source in one command — see [Build](#build) below.
+A locally built app isn't quarantined, so it opens without the Gatekeeper prompt.
 
 ### Run from source
 
