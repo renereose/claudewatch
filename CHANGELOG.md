@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.3] - 2026-07-23
+
+### Changed
+- Background sub-agents are now tracked exactly, not by count. Each agent is marked done by its
+  own completion signal — whichever channel it arrives on: a background `<task-notification>`
+  (by tool-use id) or a blocking `TaskOutput` poll (by task id), plus its own transcript
+  concluding (`end_turn`) as a fallback. Fixes agents shown running after they finished, and
+  agents shown/hidden as a FIFO group when several run at once.
+- A running sub-agent's row shows its **live activity** — the latest line from its own
+  transcript — instead of the static launch description, updating as it works.
+
 ## [1.1.2] - 2026-07-23
 
 ### Fixed
@@ -57,7 +68,8 @@ First public release.
 - Settings: opacity, pop-open-when-input-needed, hide idle sessions, float-above-all,
   compact view. Window position and preferences persist across launches.
 
-[Unreleased]: https://github.com/renereose/claudewatch/compare/v1.1.2...HEAD
+[Unreleased]: https://github.com/renereose/claudewatch/compare/v1.1.3...HEAD
+[1.1.3]: https://github.com/renereose/claudewatch/compare/v1.1.2...v1.1.3
 [1.1.2]: https://github.com/renereose/claudewatch/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/renereose/claudewatch/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/renereose/claudewatch/compare/v1.0.1...v1.1.0

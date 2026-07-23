@@ -189,7 +189,16 @@ func scan() -> [[String: Any]] {
             let mtime = mdate.timeIntervalSince1970
             if cache[path]?.0 != mtime { if let p = parse(path) { cache[path] = (mtime, p) } }
             guard var row = cache[path]?.1 else { continue }
-            let allAgents = row["agents"] as? [[String: Any]] ?? []
+            let allAgents = (row["agents"] as? [[String: Any]] ?? []).map { a -> [String: Any] in
+                // For a running bg agent, read its own transcript: live activity + whether it concluded.
+                guard a["bg"] as? Bool ?? false, !(a["done"] as? Bool ?? false),
+                      let id = a["id"] as? String,
+                      let info = subagentInfo(mainPath: path, toolUseId: id) else { return a }
+                var a = a
+                if let act = info.activity { a["desc"] = act }
+                if info.done { a["done"] = true }              // its transcript ended, even if main missed it
+                return a
+            }
             row["agents"] = allAgents.filter { !($0["done"] as? Bool ?? false) }   // live agents only
             let name = (row["cwd"] as? String).flatMap { $0.isEmpty ? nil : ($0 as NSString).lastPathComponent }
                        ?? proj
