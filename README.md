@@ -42,7 +42,8 @@ logs (`~/.claude/**`) directly and links only against system frameworks.
 - **Sub-agent tracking** — running vs. finished agents, including background agents.
 - **Two modes** — a full **list** or a compact **bubble** you can tuck into a corner.
   The bubble glows amber the moment a session needs input.
-- **Click to focus** — click a session to jump to its Terminal tab.
+- **Click to focus** — click a session to jump to its terminal. Terminal.app and iTerm2
+  select the exact tab by tty; Warp is brought to the front (it exposes no tab-scripting API).
 - **Multi-config aware** — automatically picks up every `~/.claude*` config dir
   (e.g. `CLAUDE_CONFIG_DIR` aliases).
 - **Settings** — opacity, "pop open when input needed", hide idle sessions, float-above-all,
@@ -70,7 +71,7 @@ The app needs no runtime — the binary links only macOS system frameworks. It c
 telemetry and only reads your local `~/.claude` logs; the Gatekeeper prompt is purely because
 the project isn't paying for Apple notarization.
 
-> On first click-to-focus, macOS will also ask for **Automation** permission (to raise the Terminal tab).
+> On first click-to-focus, macOS will also ask for **Automation** permission (to raise the terminal tab).
 
 ### Build it yourself
 
