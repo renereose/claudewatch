@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-07-23
+
+### Added
+- Click-to-focus now detects the terminal owning each session: Terminal.app and iTerm2
+  select the exact tab by tty; Warp is brought to the front (no tab-scripting API).
+
 ## [1.0.0] - 2026-07-23
 
 First public release.
@@ -24,5 +30,6 @@ First public release.
 - Settings: opacity, pop-open-when-input-needed, hide idle sessions, float-above-all,
   compact view. Window position and preferences persist across launches.
 
-[Unreleased]: https://github.com/renereose/claudewatch/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/renereose/claudewatch/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/renereose/claudewatch/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/renereose/claudewatch/releases/tag/v1.0.0
