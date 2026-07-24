@@ -53,6 +53,7 @@ func parse(_ path: String) -> [String: Any]? {
     guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
     var title = "", prompt = "", cwd = "", activity = "", branch = "", state = "idle", wait = ""
     var model = "", pmode = ""                      // last model + permission mode seen
+    var ctx = 0                                     // context tokens in the latest assistant turn
     var agentOrder: [String] = []                 // subagent tool_use ids, in call order
     var agentDesc: [String: String] = [:]
     var agentType: [String: String] = [:]
@@ -66,14 +67,23 @@ func parse(_ path: String) -> [String: Any]? {
         if let c = row["cwd"] as? String { cwd = c }
         if let b = row["gitBranch"] as? String { branch = b }
         if let m = (row["message"] as? [String: Any])?["model"] as? String, !m.isEmpty { model = m }
+        // Context size = the last assistant turn's input + cache tokens (its whole prompt). Output
+        // isn't counted — it's not in context until it becomes the next turn's input. Last-wins.
+        if let u = (row["message"] as? [String: Any])?["usage"] as? [String: Any] {
+            let g = { (k: String) in (u[k] as? NSNumber)?.intValue ?? 0 }
+            ctx = g("input_tokens") + g("cache_creation_input_tokens") + g("cache_read_input_tokens")
+        }
         if let pm = row["permissionMode"] as? String, !pm.isEmpty { pmode = pm }
         switch row["type"] as? String {
         case "ai-title":    title = row["aiTitle"] as? String ?? title
         case "last-prompt": prompt = row["lastPrompt"] as? String ?? prompt
-        // A bg agent's completion arrives as a <task-notification> attachment carrying the
-        // launching Agent tool_use id and a terminal <status> — the authoritative "it's done".
-        case "attachment":
-            let p = (row["attachment"] as? [String: Any])?["prompt"] as? String ?? ""
+        // A bg agent's completion arrives as a <task-notification> carrying the launching Agent
+        // tool_use id and a terminal <status> — the authoritative "it's done". Claude Code delivers
+        // it as an "attachment" prompt OR (newer) a plain "user" message string — handle both, else
+        // agents that don't conclude on end_turn (scout/planner) linger forever.
+        case "attachment", "user":
+            let p = (row["attachment"] as? [String: Any])?["prompt"] as? String
+                ?? ((row["message"] as? [String: Any])?["content"] as? String) ?? ""
             if p.contains("<task-notification>"), let id = between(p, "<tool-use-id>", "</tool-use-id>"),
                ["completed", "failed", "stopped", "cancelled"].contains(where: { p.contains("<status>\($0)</status>") }) {
                 asyncDoneIds.insert(id)
@@ -85,6 +95,10 @@ func parse(_ path: String) -> [String: Any]? {
         // Session state from the *last* relevant record (last-wins) so ✓ clears when work resumes.
         switch row["type"] as? String {
         case "user":
+            // /clear resets the session to a fresh idle state — its record is a string command
+            // echo, not a real turn, so don't let it read as "working" (the active dot).
+            if ((row["message"] as? [String: Any])?["content"] as? String)?
+                .contains("<command-name>/clear") == true { state = "idle"; break }
             let interrupted = content.contains {
                 ($0["type"] as? String) == "text" &&
                 (($0["text"] as? String) ?? "").contains("[Request interrupted by user") }
@@ -144,5 +158,5 @@ func parse(_ path: String) -> [String: Any]? {
     if state == "done" && bgRunning { state = "working" }        // bg agents still running
     return ["title": title, "prompt": prompt, "cwd": cwd, "branch": branch,
             "activity": activity, "agents": agents, "state": state, "wait": wait,
-            "model": model, "mode": pmode]
+            "model": model, "mode": pmode, "ctx": ctx]
 }

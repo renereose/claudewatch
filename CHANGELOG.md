@@ -6,6 +6,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-24
+
+### Added
+- **Menu-bar widget** — a status item showing a live session count and a state glyph that
+  mirrors the panel cards: `●` working · `▸` input needed · `✓` all done · `⊘` interrupted,
+  color-coded (green working/done, amber needs-you/interrupted). Its dropdown lists every live
+  session (click a row to focus it), a "N need you" line, and Show / Quit. Toggle the whole
+  widget off in Settings.
+- **Custom menu-bar label** — templatable count text: `{n}` → count, `{s}` → auto-plural, and a
+  `singular|plural` form for irregulars (`{n} worker{s}` → "3 workers"). Empty = `n session(s)`.
+- **CPU / memory per session** — each card can show the session's CPU% and RSS, and the menu-bar
+  title can sum them across all sessions (optionally stacked beside the label). Toggle in Settings.
+- **Context usage per session** — each card can show the latest turn's context size in tokens
+  (input + cache), formatted `117K`. Toggle in Settings.
+- **Notifications** — optional system notification when a session finishes or needs input, with
+  an optional sound. Permission is requested only when you enable notifications, not at launch.
+
+### Changed
+- Default menu-bar label is now `n session(s)` (was a bare number).
+- Notification sound now defaults to off.
+- A card stays "working" while it has a background sub-agent still running, even if the session's
+  own status reads idle.
+
 ## [1.1.3] - 2026-07-23
 
 ### Changed

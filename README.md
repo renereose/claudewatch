@@ -41,6 +41,12 @@ logs (`~/.claude/**`) directly and links only against system frameworks.
 - **Model & permission mode** — see which model each session runs and whether it's in
   `default`, `plan`, `auto-accept`, or `bypass` mode (color-coded).
 - **Sub-agent tracking** — running vs. finished agents, including background agents.
+- **Menu-bar widget** — a live session count with a state glyph mirroring the cards
+  (`●` working · `▸` input needed · `✓` all done · `⊘` interrupted). Its dropdown lists every
+  session (click to focus), plus optional summed CPU / RAM. Fully optional and customizable —
+  set your own label template (`{n} worker{s}`).
+- **Resource usage** — optional CPU %, memory, and context-token size (`117K`) per session.
+- **Notifications** — optional ping when a session finishes or needs input (sound optional).
 - **Two modes** — a full **list** or a compact **bubble** you can tuck into a corner.
   The bubble glows amber the moment a session needs input.
 - **Works with the IDE plugin** — sessions run from the **Cursor** / **VS Code** Claude Code
@@ -64,7 +70,8 @@ logs (`~/.claude/**`) directly and links only against system frameworks.
 - **Multi-config aware** — automatically picks up every `~/.claude*` config dir
   (e.g. `CLAUDE_CONFIG_DIR` aliases).
 - **Settings** — opacity, "pop open when input needed", hide idle sessions, float-above-all,
-  compact view. Remembers its position and preferences.
+  compact view, CPU/RAM and context toggles, menu-bar widget + label, notifications.
+  Remembers its position and preferences.
 
 ## Install
 

@@ -117,6 +117,19 @@ func focusTerminal(_ tty: String) {
     try? p.run()
 }
 
+// Rough CPU%/RSS(MB) for a pid via ps. %cpu is a decaying average, not instantaneous — good
+// enough for a "how heavy is this session" glance.
+// ponytail: main claude pid only, not its child/subagent tree; sum `ps --ppid` if that matters.
+func usageOf(_ pid: Int32) -> (cpu: Double, mem: Int) {
+    let p = Process(); p.launchPath = "/bin/ps"; p.arguments = ["-o", "%cpu=,rss=", "-p", "\(pid)"]
+    let pipe = Pipe(); p.standardOutput = pipe; p.standardError = Pipe()
+    try? p.run(); p.waitUntilExit()
+    let parts = (String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? "")
+        .split(whereSeparator: \.isWhitespace)
+    guard parts.count >= 2 else { return (0, 0) }
+    return (Double(parts[0]) ?? 0, (Int(parts[1]) ?? 0) / 1024)   // rss KB -> MB
+}
+
 // The pid's executable path — tells which IDE hosts an editor session (its binary lives under
 // ~/.cursor/extensions/… or ~/.vscode/extensions/…).
 func commandOf(_ pid: Int32) -> String {
@@ -206,13 +219,18 @@ func scan() -> [[String: Any]] {
             row["tty"] = s.tty
             row["pid"] = Int(s.pid)                       // for IDE-hosted sessions (no tty): focus by pid+cwd
             row["host"] = hostBadge(tty: s.tty, pid: s.pid)   // card badge: cursor/code/warp/iterm/…
+            let u = usageOf(s.pid); row["cpu"] = u.cpu; row["mem"] = u.mem
             row["ago"] = Int(now - mtime)
-            // Live status overrides the transcript guess: it knows a dialog is open (waiting)
-            // or work is running (busy/shell). idle/unknown -> keep transcript done/interrupted.
+            // The session's own status file is authoritative for working-vs-idle. The transcript tail
+            // is too noisy to derive it from (trailing meta/attachment/tool_result records make a naive
+            // last-record read look "working" long after the turn ended). The one thing status can't
+            // see is a bg agent still running in the background — that keeps the card working on idle.
+            let bgActive = (row["agents"] as? [[String: Any]] ?? []).contains { $0["bg"] as? Bool ?? false }
             switch s.status {
             case "waiting":       row["state"] = "waiting"; row["wait"] = s.wait
             case "busy", "shell": row["state"] = "working"
-            default: break
+            case "idle":          if !bgActive && (row["state"] as? String) != "interrupted" { row["state"] = "done" }
+            default:              if bgActive { row["state"] = "working" }   // unknown status: trust bg activity
             }
             out.append(row)
         }

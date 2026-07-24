@@ -23,6 +23,7 @@ let HTML = """
  .set .row:hover{color:#d5d8de}
  .set .k{flex:1}
  .set input[type=range]{width:96px;height:3px;accent-color:#34d399}
+ .set input[type=text]{-webkit-user-select:text;cursor:text}
  .set input[type=checkbox]{accent-color:#34d399;width:13px;height:13px}
  .set .val{color:#6b7280;font-size:10px;width:28px;text-align:right}
  .m-bubble .bar,.m-bubble .set{display:none}
@@ -50,6 +51,8 @@ let HTML = """
  .pm.plan{background:#26304a;color:#93a7d8}
  .pm.auto{background:#3a2f1c;color:#e0b877}
  .pm.bypass{background:#3a1f22;color:#e08b8b}
+ .res{color:#6b7280;font-size:10px;margin-left:auto}
+ .res b{color:#8a93a3;font-weight:700}
  .t{color:#9ca3af;font-size:11px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
  .a{color:#5f6672;font-size:10px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
  .ag{font-size:11px;margin-top:3px;display:flex;gap:7px;align-items:baseline}
@@ -84,10 +87,17 @@ let HTML = """
  <label class=row><input type=checkbox data-k=hideIdle><span class=k>hide idle / finished sessions</span></label>
  <label class=row><input type=checkbox data-k=onTop><span class=k>float above all windows</span></label>
  <label class=row><input type=checkbox data-k=compact><span class=k>compact (hide activity & agents)</span></label>
+ <label class=row><input type=checkbox data-k=showUsage><span class=k>show cpu / memory usage</span></label>
+ <label class=row><input type=checkbox data-k=statStack><span class=k>stack cpu / ram beside the label (menu bar)</span></label>
+ <label class=row><span class=k>menu-bar label</span><input id=slabel type=text placeholder="{n} worker{s}" style="flex:1;min-width:0;background:rgba(255,255,255,.08);border:0;border-radius:5px;color:inherit;padding:3px 6px;font:inherit"></label>
+ <label class=row><input type=checkbox data-k=showCtx><span class=k>show context usage</span></label>
+ <label class=row><input type=checkbox data-k=menuBar><span class=k>show menu-bar widget</span></label>
+ <label class=row><input type=checkbox data-k=notify><span class=k>notify on finish / input needed</span></label>
+ <label class=row><input type=checkbox data-k=sound><span class=k>notification sound</span></label>
 </div>
 <div id=x></div><script>
  var MODE='list',LAST=[],PW=0;
- var S={op:1,autoExpand:1,hideIdle:0,onTop:1,compact:0};   // user settings (persisted via Swift)
+ var S={op:1,autoExpand:1,hideIdle:0,onTop:1,compact:0,showUsage:1,showCtx:1,menuBar:1,notify:0,sound:0,statStack:1,slabel:''};   // user settings (persisted via Swift)
  function ago(s){return s<60?s+'s':s<3600?(s/60|0)+'m':(s/3600|0)+'h'}
  function esc(t){let d=document.createElement('div');d.textContent=t||'';return d.innerHTML}
  function focusit(el){try{window.webkit.messageHandlers.focus.postMessage({tty:el.dataset.t,cwd:el.dataset.c,pid:+el.dataset.p})}catch(e){}}
@@ -105,8 +115,9 @@ let HTML = """
  function syncUI(){
    [].forEach.call(document.querySelectorAll('.mb'),function(b){b.classList.toggle('act',b.dataset.m==MODE)});
    var op=document.getElementById('op');op.value=Math.round(S.op*100);document.getElementById('opv').textContent=op.value+'%';
-   [].forEach.call(document.querySelectorAll('[data-k]'),function(c){c.checked=!!S[c.dataset.k]})}
- function setCfg(m,pref){MODE=m;if(pref)S=Object.assign({op:1,autoExpand:1,hideIdle:0,onTop:1,compact:0},pref);
+   [].forEach.call(document.querySelectorAll('[data-k]'),function(c){c.checked=!!S[c.dataset.k]});
+   document.getElementById('slabel').value=S.slabel||''}
+ function setCfg(m,pref){MODE=m;if(pref)S=Object.assign({op:1,autoExpand:1,hideIdle:0,onTop:1,compact:0,showUsage:1,showCtx:1,menuBar:1,notify:0,sound:0,statStack:1,slabel:''},pref);
    document.body.className='m-'+m;syncUI();render(LAST)}
  function setMode(m){setCfg(m,S);post()}
  // status marker, shared by list + bubble
@@ -115,11 +126,16 @@ let HTML = """
           r.state=='waiting'?'<span class="dot wait"></span>':
           r.state=='working'?'<span class="dot live"></span>':'<span class=dot></span>'}
  function shModel(m){return (m||'').replace(/^claude-/,'').replace(/-\\d{6,}$/,'').replace('[1m]','')}
+ function ktok(n){return n>=1000?(n/1000).toFixed(n<10000?1:0)+'K':n}   // 117094 -> 117K, 5300 -> 5.3K
+
  function pmClass(p){return p=='plan'?'plan':(p=='acceptEdits'||p=='auto')?'auto':p=='bypassPermissions'?'bypass':''}
  function pmLabel(p){return p=='acceptEdits'?'auto-accept':p=='bypassPermissions'?'bypass':p=='default'?'default':p}
  function card(r){
    var cls=r.state=='waiting'?' wait':r.state=='working'?' on':'';
    var mdl=shModel(r.model),pm=r.mode;
+   var right=[];   // right-aligned meta cluster: context tokens then cpu/mem, each toggleable
+   if(S.showCtx&&r.ctx) right.push('<b>'+ktok(r.ctx)+'</b> ctx');
+   if(S.showUsage&&r.mem) right.push('<b>'+Math.round(r.cpu)+'%</b> cpu · <b>'+r.mem+'</b>MB');
    return '<div class="c'+cls+'" data-t="'+esc(r.tty)+'" data-c="'+esc(r.cwd||'')+'" data-p="'+(r.pid||0)+'" onclick="focusit(this)">'+
      '<div class=top>'+mark(r)+'<span class=name>'+esc(r.name)+'</span>'+
      (r.host?'<span class="host'+(['terminal','iterm','warp'].indexOf(r.host)<0?' ide':'')+'">'+esc(r.host)+'</span>':'')+
@@ -128,9 +144,10 @@ let HTML = """
      (r.state=='waiting'?'<div class=w>▸ needs you · '+esc(r.wait||'input')+'</div>':'')+
      (r.title?'<div class=t>'+esc(r.title)+'</div>':'')+
      (!S.compact&&r.activity?'<div class=a>'+esc(r.activity)+'</div>':'')+
-     ((mdl||pm)?'<div class=meta>'+
+     ((mdl||pm||right.length)?'<div class=meta>'+
        (mdl?'<span class=mdl>'+esc(mdl)+'</span>':'')+
-       (pm?'<span class="pm '+pmClass(pm)+'">'+esc(pmLabel(pm))+'</span>':'')+'</div>':'')+
+       (pm?'<span class="pm '+pmClass(pm)+'">'+esc(pmLabel(pm))+'</span>':'')+
+       (right.length?'<span class=res>'+right.join(' · ')+'</span>':'')+'</div>':'')+
      (S.compact?'':(r.agents||[]).map(function(a){return '<div class="ag '+(a.done?'done':'run')+'">'+
        '<span class=m>'+(a.done?'●':'○')+'</span>'+
        '<span class=ty>'+esc(a.type)+(a.bg?' ·bg':'')+'</span>'+
@@ -157,5 +174,6 @@ let HTML = """
  [].forEach.call(document.querySelectorAll('.mb'),function(b){b.onclick=function(){setMode(b.dataset.m)}});
  document.getElementById('op').oninput=function(){S.op=this.value/100;document.getElementById('opv').textContent=this.value+'%';post()};
  [].forEach.call(document.querySelectorAll('[data-k]'),function(c){c.onchange=function(){S[c.dataset.k]=c.checked?1:0;post();render(LAST)}});
+ document.getElementById('slabel').oninput=function(){S.slabel=this.value;post()};
 </script>
 """
