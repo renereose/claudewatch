@@ -274,7 +274,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
         cv.wantsLayer = true
         cv.layer?.cornerRadius = 12                 // rounded widget corners
         cv.layer?.masksToBounds = true
-        web = WKWebView(frame: cv.bounds, configuration: cfg)
+        web = FirstMouseWebView(frame: cv.bounds, configuration: cfg)
         web.autoresizingMask = [.width, .height]
         web.setValue(false, forKey: "drawsBackground")
         web.loadHTMLString(HTML, baseURL: nil)
@@ -375,6 +375,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
 // whole app, so typing works but your terminal stays in front.
 final class KeyablePanel: NSPanel {
     override var canBecomeKey: Bool { true }
+}
+
+// Clicking a card focuses another app, so the panel is usually NOT key when you click it again —
+// and an unkey window's first click is swallowed as an activation click unless the view opts in.
+final class FirstMouseWebView: WKWebView {
+    override func acceptsFirstMouse(for e: NSEvent?) -> Bool { true }
 }
 
 // Menu-bar content for the stacked layout: a large count label on the left (its leading dot

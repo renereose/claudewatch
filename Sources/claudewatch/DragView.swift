@@ -5,6 +5,7 @@ import Cocoa
 class DragView: NSView {
     var onClick: (() -> Void)?
     var onMoved: (() -> Void)?
+    override func acceptsFirstMouse(for e: NSEvent?) -> Bool { true }   // drag without a focusing click first
     override func mouseDown(with e: NSEvent) {
         guard let win = window else { return }
         let start = NSEvent.mouseLocation, origin = win.frame.origin

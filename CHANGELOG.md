@@ -6,6 +6,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-07-27
+
+### Fixed
+- A background sub-agent resumed after it finished (a follow-up message re-dispatches it) now
+  shows as running again. Its completion had marked it done permanently, and the re-dispatched
+  run's own completion notification — which carries only a task id, no tool-use id — was missed,
+  so the agent could also have stayed running forever once un-marked.
+- A resumed sub-agent no longer inherits its previous run's state: the stale `end_turn` that
+  ended the earlier run no longer reads as "finished", and its last line no longer shows as the
+  live activity of the new run.
+- Clicking a card to focus its terminal/editor now works anywhere on the card, every time.
+  Two causes: the 2s refresh rewrote the cards between mouse-down and mouse-up, which cancels the
+  click; and since clicking a card hands focus to another app, claudewatch's next click was
+  swallowed as a window-activation click.
+
 ## [1.2.0] - 2026-07-24
 
 ### Added
@@ -91,7 +106,9 @@ First public release.
 - Settings: opacity, pop-open-when-input-needed, hide idle sessions, float-above-all,
   compact view. Window position and preferences persist across launches.
 
-[Unreleased]: https://github.com/renereose/claudewatch/compare/v1.1.3...HEAD
+[Unreleased]: https://github.com/renereose/claudewatch/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/renereose/claudewatch/compare/v1.2.0...v1.2.1
+[1.2.0]: https://github.com/renereose/claudewatch/compare/v1.1.3...v1.2.0
 [1.1.3]: https://github.com/renereose/claudewatch/compare/v1.1.2...v1.1.3
 [1.1.2]: https://github.com/renereose/claudewatch/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/renereose/claudewatch/compare/v1.1.0...v1.1.1

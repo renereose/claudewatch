@@ -27,16 +27,19 @@ func subagentInfo(mainPath: String, toolUseId: String) -> (activity: String?, do
     else { return nil }
     let jsonl = dir + "/" + meta.dropLast(10) + ".jsonl"     // strip ".meta.json", add ".jsonl"
     guard let text = try? String(contentsOfFile: jsonl, encoding: .utf8) else { return nil }
-    var activity: String? = nil, done = false, sawAssistant = false
+    var activity: String? = nil, done = false, sawAssistant = false, resumed = false
     for line in text.split(separator: "\n").reversed() {
         guard let d = line.data(using: .utf8),
               let r = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else { continue }
         let msg = r["message"] as? [String: Any]
+        // A user record after the last assistant turn = it was just re-dispatched and hasn't replied
+        // yet; that stale end_turn below is the *previous* run's, not this one's.
+        if !sawAssistant, (r["type"] as? String) == "user", msg?["content"] is String { resumed = true }
         if !sawAssistant, (r["type"] as? String) == "assistant" {
             sawAssistant = true
-            done = (msg?["stop_reason"] as? String) == "end_turn"
+            done = !resumed && (msg?["stop_reason"] as? String) == "end_turn"
         }
-        if activity == nil, let content = msg?["content"] as? [[String: Any]] {
+        if activity == nil, !resumed, let content = msg?["content"] as? [[String: Any]] {   // pre-resume text is stale
             for c in content.reversed() where (c["type"] as? String) == "text" {
                 if let t = (c["text"] as? String)?.split(separator: "\n").first
                             .map({ $0.trimmingCharacters(in: .whitespaces) }), !t.isEmpty {
@@ -84,9 +87,12 @@ func parse(_ path: String) -> [String: Any]? {
         case "attachment", "user":
             let p = (row["attachment"] as? [String: Any])?["prompt"] as? String
                 ?? ((row["message"] as? [String: Any])?["content"] as? String) ?? ""
-            if p.contains("<task-notification>"), let id = between(p, "<tool-use-id>", "</tool-use-id>"),
+            if p.contains("<task-notification>"),
                ["completed", "failed", "stopped", "cancelled"].contains(where: { p.contains("<status>\($0)</status>") }) {
-                asyncDoneIds.insert(id)
+                // Usually the notification names the launching Agent tool_use id; a re-dispatched agent's
+                // notification carries only its task_id, so fall back to the launch pairing.
+                if let id = between(p, "<tool-use-id>", "</tool-use-id>") { asyncDoneIds.insert(id) }
+                else if let t = between(p, "<task-id>", "</task-id>"), let id = taskTool[t] { asyncDoneIds.insert(id) }
             }
         default: break
         }
@@ -120,12 +126,20 @@ func parse(_ path: String) -> [String: Any]? {
                 if let t = c["text"] as? String, !t.isEmpty { activity = t }
             case "tool_use":
                 let name = c["name"] as? String ?? "tool"
+                let input = c["input"] as? [String: Any]
                 if name == "Agent" || name == "Task", let id = c["id"] as? String {
-                    let input = c["input"] as? [String: Any]
                     if agentDesc[id] == nil { agentOrder.append(id) }
                     agentDesc[id] = input?["description"] as? String ?? "agent"
                     agentType[id] = input?["subagent_type"] as? String ?? "agent"
-                } else if !name.hasPrefix("Task") { activity = "⚙ " + name }   // Task* is plumbing, not activity
+                } else if !name.hasPrefix("Task") {                            // Task* is plumbing, not activity
+                    // SendMessage to a finished bg agent re-dispatches it: it's running again until its
+                    // next completion notification. ponytail: matches by task_id only — `to:` may also be
+                    // an agent name, add a name lookup if that turns up in practice.
+                    if name == "SendMessage", let to = input?["to"] as? String, let id = taskTool[to] {
+                        asyncDoneIds.remove(id)
+                    }
+                    activity = "⚙ " + name
+                }
             case "tool_result":
                 if let id = c["tool_use_id"] as? String {
                     let body = String(describing: c["content"] ?? "")

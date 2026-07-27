@@ -136,7 +136,7 @@ let HTML = """
    var right=[];   // right-aligned meta cluster: context tokens then cpu/mem, each toggleable
    if(S.showCtx&&r.ctx) right.push('<b>'+ktok(r.ctx)+'</b> ctx');
    if(S.showUsage&&r.mem) right.push('<b>'+Math.round(r.cpu)+'%</b> cpu · <b>'+r.mem+'</b>MB');
-   return '<div class="c'+cls+'" data-t="'+esc(r.tty)+'" data-c="'+esc(r.cwd||'')+'" data-p="'+(r.pid||0)+'" onclick="focusit(this)">'+
+   return '<div class="c'+cls+'" data-t="'+esc(r.tty)+'" data-c="'+esc(r.cwd||'')+'" data-p="'+(r.pid||0)+'">'+
      '<div class=top>'+mark(r)+'<span class=name>'+esc(r.name)+'</span>'+
      (r.host?'<span class="host'+(['terminal','iterm','warp'].indexOf(r.host)<0?' ide':'')+'">'+esc(r.host)+'</span>':'')+
      (r.branch?'<span class=br>'+esc(r.branch)+'</span>':'')+
@@ -169,6 +169,10 @@ let HTML = """
      x.innerHTML='<div class="bwrap'+(waitN?' hot':'')+'">'+inner+'</div>';fit();return}
    if(!v.length){x.innerHTML='<div class=empty>'+(S.hideIdle?'nothing active':'no active sessions')+'</div>';fit();dragLayout();return}
    x.innerHTML=v.map(card).join('');fit();dragLayout()}
+ // Focus on mousedown, delegated from the stable container: the 2s refresh replaces the cards'
+ // innerHTML, so a per-card onclick is lost whenever a redraw lands between press and release.
+ document.getElementById('x').addEventListener('mousedown',function(e){
+   var c=e.target.closest?e.target.closest('.c'):null;if(c)focusit(c)});
  document.getElementById('gear').onclick=function(){document.getElementById('set').classList.toggle('open');fit()};
  document.getElementById('quit').onclick=function(){try{window.webkit.messageHandlers.cfg.postMessage(JSON.stringify({quit:1}))}catch(e){}};
  [].forEach.call(document.querySelectorAll('.mb'),function(b){b.onclick=function(){setMode(b.dataset.m)}});
