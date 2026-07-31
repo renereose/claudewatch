@@ -49,7 +49,8 @@ logs (`~/.claude/**`) directly and links only against system frameworks.
 - **Notifications** — optional ping when a session finishes or needs input (sound optional),
   or your own audio file played whenever a session needs you.
 - **Two modes** — a full **list** or a compact **bubble** you can tuck into a corner.
-  The bubble glows amber the moment a session needs input.
+  The bubble glows amber the moment a session needs input; its rows click through to focus a
+  session, and its header (`⠿` drag · `▤` expand) is what switches back to the list.
 - **Works with the IDE plugin** — sessions run from the **Cursor** / **VS Code** Claude Code
   extension are tracked alongside terminal sessions, with the same status, model, mode, and
   "needs you" alerts. A small **host badge** on each card names where a session runs

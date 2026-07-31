@@ -72,7 +72,14 @@ let HTML = """
  .bwrap{background:#1e2127;border:1px solid #2a2e37;border-radius:12px;padding:6px 9px;
     display:flex;flex-direction:column;gap:2px}
  .bwrap.hot{border-color:#8a6d3b;background:#231f17}
- .brow{display:flex;align-items:center;gap:7px;min-width:0}
+ .bhead{display:flex;align-items:center;gap:5px;padding-bottom:3px}
+ .bhead .grip{padding:0 2px 0 0}
+ .bct{flex:1;font-size:10px;color:#6b7280;letter-spacing:.05em}
+ .bhead button{background:none;border:0;color:#6b7280;cursor:pointer;font-size:11px;padding:0 3px;
+    border-radius:4px;line-height:1}
+ .bhead button:hover{color:#d5d8de;background:#242833}
+ .brow{display:flex;align-items:center;gap:7px;min-width:0;padding:1px 0;cursor:pointer}
+ .brow:hover{background:#242833;border-radius:5px}
  .bnm{flex:1;color:#cfd3da;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
  .bwt{color:#f0b866;font-size:10px;flex:none;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
  .bag{color:#6b7280;font-size:10px;flex:none}
@@ -107,9 +114,12 @@ let HTML = """
  function focusit(el){try{window.webkit.messageHandlers.focus.postMessage({tty:el.dataset.t,cwd:el.dataset.c,pid:+el.dataset.p})}catch(e){}}
  function post(){try{window.webkit.messageHandlers.cfg.postMessage(JSON.stringify({mode:MODE,pref:S}))}catch(e){}}
  function fit(){try{window.webkit.messageHandlers.cfg.postMessage(JSON.stringify({fit:document.body.scrollHeight}))}catch(e){}}
- // report the header's draggable gaps (bar minus buttons) so Swift can place drag handles there
- function dragLayout(){if(MODE!='list')return;
-   var bar=document.getElementById('bar'),br=bar.getBoundingClientRect();
+ // report the header's draggable gaps (header minus its buttons) so Swift can place drag handles
+ // there. List mode: the title bar. Bubble mode: the pill's own header strip — everything below
+ // it stays clickable so a row click focuses its session instead of moving/expanding the window.
+ function dragLayout(){
+   var bar=document.getElementById(MODE=='bubble'?'bhead':'bar');if(!bar)return;
+   var br=bar.getBoundingClientRect();
    var bs=[].map.call(bar.querySelectorAll('button'),function(b){var r=b.getBoundingClientRect();return[r.left,r.right]}).sort(function(a,b){return a[0]-b[0]});
    var gaps=[],cur=br.left;
    bs.forEach(function(b){if(b[0]-cur>4)gaps.push([cur,b[0]]);cur=Math.max(cur,b[1])});
@@ -159,7 +169,7 @@ let HTML = """
        '<span class=ty>'+esc(a.type)+(a.bg?' ·bg':'')+'</span>'+
        '<span class=de>'+esc(a.desc)+'</span></div>'}).join(''))+
      '</div>'}
- function brow(r){return '<div class=brow>'+mark(r)+
+ function brow(r){return '<div class="brow bc" data-t="'+esc(r.tty)+'" data-c="'+esc(r.cwd||'')+'" data-p="'+(r.pid||0)+'">'+mark(r)+
    '<span class=bnm>'+esc(r.name)+'</span>'+
    (r.state=='waiting'?'<span class=bwt>'+esc(r.wait||'input')+'</span>':'')+
    '<span class=bag>'+ago(r.ago)+'</span></div>'}
@@ -169,16 +179,22 @@ let HTML = """
    if(S.autoExpand&&MODE=='bubble'&&waitN>PW){PW=waitN;setMode('list');return}   // rising edge → pop open
    PW=waitN;
    if(MODE=='bubble'){
+     // Header strip = the only drag + expand affordance; rows below click through to focus.
+     var head='<div class=bhead id=bhead><span class=grip>⠿</span><span class=bct>'+
+       (v.length||'no')+' session'+(v.length==1?'':'s')+'</span>'+
+       '<button id=bexp title="Expand to list">▤</button></div>';
      var inner=v.length?v.slice(0,8).map(brow).join('')+
        (v.length>8?'<div class=bmore>+'+(v.length-8)+' more</div>':'')
        :'<div class=bq>all quiet</div>';
-     x.innerHTML='<div class="bwrap'+(waitN?' hot':'')+'">'+inner+'</div>';fit();return}
+     x.innerHTML='<div class="bwrap'+(waitN?' hot':'')+'">'+head+inner+'</div>';
+     document.getElementById('bexp').onclick=function(e){e.stopPropagation();setMode('list')};
+     fit();dragLayout();return}
    if(!v.length){x.innerHTML='<div class=empty>'+(S.hideIdle?'nothing active':'no active sessions')+'</div>';fit();dragLayout();return}
    x.innerHTML=v.map(card).join('');fit();dragLayout()}
  // Focus on mousedown, delegated from the stable container: the 2s refresh replaces the cards'
  // innerHTML, so a per-card onclick is lost whenever a redraw lands between press and release.
  document.getElementById('x').addEventListener('mousedown',function(e){
-   var c=e.target.closest?e.target.closest('.c'):null;if(c)focusit(c)});
+   var c=e.target.closest?e.target.closest('.c,.bc'):null;if(c)focusit(c)});
  document.getElementById('gear').onclick=function(){document.getElementById('set').classList.toggle('open');fit()};
  document.getElementById('quit').onclick=function(){try{window.webkit.messageHandlers.cfg.postMessage(JSON.stringify({quit:1}))}catch(e){}};
  [].forEach.call(document.querySelectorAll('.mb'),function(b){b.onclick=function(){setMode(b.dataset.m)}});

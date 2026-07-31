@@ -1,9 +1,8 @@
-// Native drag handle — WKWebView eats background drags, so we need this. Distinguishes a
-// click (no movement → onClick, used to expand the bubble) from a drag (moves the window).
+// Native drag handle — WKWebView eats background drags, so we need this. Only the header
+// strip gets one; everything below stays clickable in the web view.
 import Cocoa
 
 class DragView: NSView {
-    var onClick: (() -> Void)?
     var onMoved: (() -> Void)?
     override func acceptsFirstMouse(for e: NSEvent?) -> Bool { true }   // drag without a focusing click first
     override func mouseDown(with e: NSEvent) {
@@ -17,7 +16,7 @@ class DragView: NSView {
             if abs(dx) > 3 || abs(dy) > 3 { if !moved { NSCursor.closedHand.push() }; moved = true }
             if moved { win.setFrameOrigin(NSPoint(x: origin.x + dx, y: origin.y + dy)) }
         }
-        if moved { NSCursor.pop(); onMoved?() } else { onClick?() }
+        if moved { NSCursor.pop(); onMoved?() }
     }
     // Tracking area (not cursor rects) — reliable on a borderless non-activating panel.
     override func updateTrackingAreas() {

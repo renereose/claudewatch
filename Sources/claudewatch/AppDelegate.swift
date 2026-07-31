@@ -10,7 +10,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
     var panel: NSPanel!
     var status: NSStatusItem!                        // menu-bar indicator (there's no dock icon)
     var lastRows: [[String: Any]] = []               // latest scan, for the dropdown (rebuilt on open)
-    var grips: [DragView] = []                       // drag handles (bubble: whole pill; list: bar gaps)
+    var grips: [DragView] = []                       // drag handles: the header-strip gaps, both modes
 
     // Pop to the front even when "float above all windows" is off (level == .normal).
     @objc func showPanel() {
@@ -137,7 +137,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
         }
     }
 
-    func makeGrip(_ f: NSRect, mask: NSView.AutoresizingMask, expandable: Bool) -> DragView {
+    func makeGrip(_ f: NSRect, mask: NSView.AutoresizingMask) -> DragView {
         let g = DragView(frame: f)
         g.autoresizingMask = mask
         g.onMoved = { [weak self] in                 // remember where the user parked it
@@ -145,12 +145,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
             UserDefaults.standard.set(Double(f.maxX), forKey: "cw.right")
             UserDefaults.standard.set(Double(f.maxY), forKey: "cw.top")
         }
-        if expandable { g.onClick = { [weak self] in  // click bubble → expand to list
-            guard let self = self, self.mode == "bubble" else { return }
-            self.mode = "list"; UserDefaults.standard.set("list", forKey: "cw.mode")
-            self.listFallbackGrip(); self.applyWindow()
-            self.web.evaluateJavaScript("setCfg('list',\(self.prefJSON))")
-        } }
         return g
     }
     func setGrips(_ views: [DragView]) {
@@ -158,15 +152,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
         grips = views
         views.forEach { panel.contentView!.addSubview($0) }
     }
-    func bubbleGrip() {
-        lastDrag = ""
-        setGrips([makeGrip(panel.contentView!.bounds, mask: [.width, .height], expandable: true)])
-    }
-    func listFallbackGrip() {                         // small ⠿ handle until JS reports the bar gaps
+    // Both modes: a small ⠿ handle in the top-left until JS reports its header's real gaps.
+    // The bubble is NOT one big handle any more — only its header strip drags, so clicking a
+    // session row reaches the web view and focuses that session.
+    func listFallbackGrip() {
         lastDrag = ""
         let cv = panel.contentView!
         setGrips([makeGrip(NSRect(x: 0, y: cv.bounds.height - 26, width: 26, height: 26),
-                           mask: [.minYMargin, .maxXMargin], expandable: false)])
+                           mask: [.minYMargin, .maxXMargin])])
     }
     // Persisted view prefs. mode: list=full list, bubble=minimized pill. prefJSON is the JS
     // settings blob (opacity, toggles) — JS owns it; Swift persists it and applies the native bits.
@@ -232,7 +225,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
             if j["pickSound"] != nil { pickSound(); return }
             if let f = (j["fit"] as? NSNumber)?.doubleValue { contentH = CGFloat(max(44, min(680, f))) }
             // Draggable bar gaps (list mode), in CSS px top-left → flip to view coords.
-            if let dr = j["drag"] as? [[String: Any]], mode == "list" {
+            if let dr = j["drag"] as? [[String: Any]] {
                 let key = "\(panel.contentView!.bounds.height)|\(s)"   // gaps + height unchanged → skip
                 if key == lastDrag { return }
                 lastDrag = key
@@ -241,13 +234,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
                     let x = (r["x"] as? NSNumber)?.doubleValue ?? 0, y = (r["y"] as? NSNumber)?.doubleValue ?? 0
                     let w = (r["w"] as? NSNumber)?.doubleValue ?? 0, h = (r["h"] as? NSNumber)?.doubleValue ?? 0
                     return makeGrip(NSRect(x: x, y: cvH - (y + h), width: w, height: h),
-                                    mask: [.minYMargin], expandable: false)
+                                    mask: [.minYMargin])
                 })
                 return
             }
             if let mo = j["mode"] as? String, mo != mode {
                 mode = mo; UserDefaults.standard.set(mo, forKey: "cw.mode")
-                if mo == "bubble" { bubbleGrip() } else { listFallbackGrip() }
+                listFallbackGrip()
             }
             if let pref = j["pref"] as? [String: Any] {
                 applyPref(pref)
@@ -284,7 +277,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
         web.setValue(false, forKey: "drawsBackground")
         web.loadHTMLString(HTML, baseURL: nil)
         cv.addSubview(web)
-        if mode == "bubble" { bubbleGrip() } else { listFallbackGrip() }   // JS refines list gaps
+        listFallbackGrip()   // JS refines it to the header gaps once rendered
         // Restore the saved top-right corner (clamped on-screen), else park top-right.
         let vf = (NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900))
         let d = UserDefaults.standard

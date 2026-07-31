@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Bubble mode no longer expands on any click.** The pill gets its own header strip — `⠿` to
+  drag, a session count, and a `▤` button that expands to the list. Clicking a session row now
+  focuses that session's terminal/editor, same as in list view.
+
 ## [1.3.0] - 2026-07-31
 
 ### Added
