@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hook that opens the HUD if it is not already running, plus a `/claudewatch:approve` command that
   clears the app's one-time Gatekeeper quarantine on request. No MCP servers, no context cost.
 - **Self-updating app.** claudewatch asks the GitHub releases API for the latest tag at launch and
-  every 6 hours. A newer version lights up a notice in the HUD and the menu-bar dropdown; clicking
+  every hour. A newer version lights up a notice in the HUD and the menu-bar dropdown; clicking
   it confirms, then downloads `Claudewatch.zip`, swaps the running app for it, and restarts. The
   swap is a same-volume `replaceItemAt`, so a failed download or a corrupt archive leaves the
   installed app untouched. Toggle the check off with Settings → **check github for updates**.

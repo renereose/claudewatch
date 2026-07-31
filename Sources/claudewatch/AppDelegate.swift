@@ -310,14 +310,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
             UNUserNotificationCenter.current().delegate = self
         }                                                // auth is requested lazily when notifications are enabled
         Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in self.refresh() }
-        checkUpdate()                        // and again every 6h, for HUDs that stay up for days
-        Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { _ in self.checkUpdate() }
+        checkUpdate()                        // and hourly, for HUDs that stay up for days
+        Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { _ in self.checkUpdate() }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             self.web.evaluateJavaScript("setCfg('\(self.mode)',\(self.prefJSON))")   // push prefs into the view
             self.refresh()
         }
     }
-    // Update check: one unauthenticated GET to the GitHub releases API, at launch and every 6h.
+    // Update check: one unauthenticated GET to the GitHub releases API, at launch and hourly.
     // Nothing is sent but the request itself, nothing is downloaded or installed — a newer tag
     // just lights up a notice in the HUD and the menu, which opens the releases page when clicked.
     // Dev builds have no bundle version, so they never check. Off via Settings → check for updates.

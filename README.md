@@ -101,7 +101,7 @@ telemetry and reads only your local `~/.claude` logs; the Gatekeeper prompt is p
 the project isn't paying for Apple notarization.
 
 Its one network call is the update check: an unauthenticated `GET` to the GitHub releases API at
-launch and every 6h, sending nothing but the request. A newer tag lights up a notice in the HUD
+launch and every hour, sending nothing but the request. A newer tag lights up a notice in the HUD
 and the menu; clicking it asks before downloading `Claudewatch.zip`, replacing the app in place,
 and restarting it. Turn the whole thing off with Settings → **check github for updates**.
 
