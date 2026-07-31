@@ -1,0 +1,16 @@
+{
+  "name": "claudewatch",
+  "owner": { "name": "renereose" },
+  "description": "The claudewatch HUD for Claude Code — see every live session at a glance.",
+  "plugins": [
+    {
+      "name": "claudewatch",
+      "source": "./plugins/claudewatch",
+      "description": "Auto-starts the claudewatch HUD — a floating window showing every live Claude Code session, what it's doing, and which one needs your input.",
+      "version": "1.4.0",
+      "author": { "name": "renereose" },
+      "homepage": "https://github.com/renereose/claudewatch",
+      "license": "MIT"
+    }
+  ]
+}

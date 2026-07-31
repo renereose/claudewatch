@@ -100,6 +100,20 @@ the project isn't paying for Apple notarization.
 
 > On first click-to-focus, macOS will also ask for **Automation** permission (to raise the terminal tab).
 
+### Claude Code plugin (optional)
+
+Once the app is installed, the plugin starts it for you whenever a Claude Code session starts:
+
+```sh
+/plugin marketplace add renereose/claudewatch
+/plugin install claudewatch@claudewatch
+/reload-plugins
+```
+
+That's all it does — one `SessionStart` hook that opens Claudewatch if it isn't already running,
+and quietly does nothing if the app isn't installed. It adds no commands, agents, MCP servers,
+or context cost, and the HUD works exactly the same without it.
+
 ### Build it yourself
 
 Don't want to trust a prebuilt binary? Build from source in one command — see [Build](#build) below.
