@@ -6,11 +6,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-07-31
+
 ### Added
 - **Claude Code plugin + marketplace.** `/plugin marketplace add renereose/claudewatch` then
   `/plugin install claudewatch@claudewatch` installs a plugin whose only job is a `SessionStart`
   hook that opens the HUD if it is not already running, plus a `/claudewatch:approve` command that
   clears the app's one-time Gatekeeper quarantine on request. No MCP servers, no context cost.
+- **Self-updating app.** claudewatch asks the GitHub releases API for the latest tag at launch and
+  every 6 hours. A newer version lights up a notice in the HUD and the menu-bar dropdown; clicking
+  it confirms, then downloads `Claudewatch.zip`, swaps the running app for it, and restarts. The
+  swap is a same-volume `replaceItemAt`, so a failed download or a corrupt archive leaves the
+  installed app untouched. Toggle the check off with Settings → **check github for updates**.
+- `scripts/set-version.sh X.Y.Z` bumps the app bundle, the plugin manifest and the marketplace
+  catalog together, so plugin users with marketplace auto-update on actually see each release.
 
 ## [1.4.0] - 2026-07-31
 
@@ -128,7 +137,8 @@ First public release.
 - Settings: opacity, pop-open-when-input-needed, hide idle sessions, float-above-all,
   compact view. Window position and preferences persist across launches.
 
-[Unreleased]: https://github.com/renereose/claudewatch/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/renereose/claudewatch/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/renereose/claudewatch/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/renereose/claudewatch/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/renereose/claudewatch/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/renereose/claudewatch/compare/v1.2.0...v1.2.1

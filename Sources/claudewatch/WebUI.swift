@@ -68,6 +68,9 @@ let HTML = """
  .ag.done .m{color:#5aa079}
  @keyframes p{50%{opacity:.25}}
  .empty{color:#4b5563;font-size:11px;padding:20px 8px;text-align:center}
+ .upd{background:#1e2b26;border:1px solid #2f6f4f;color:#7fc8a0;border-radius:8px;cursor:pointer;
+    font-size:11px;padding:5px 8px;margin-bottom:6px;text-align:center}
+ .upd:hover{background:#24352e}
  /* bubble = compact one-line-per-session summary */
  .bwrap{background:#1e2127;border:1px solid #2a2e37;border-radius:12px;padding:6px 9px;
     display:flex;flex-direction:column;gap:2px}
@@ -104,11 +107,12 @@ let HTML = """
  <label class=row><input type=checkbox data-k=menuBar><span class=k>show menu-bar widget</span></label>
  <label class=row><input type=checkbox data-k=notify><span class=k>notify on finish / input needed</span></label>
  <label class=row><input type=checkbox data-k=sound><span class=k>notification sound</span></label>
+ <label class=row><input type=checkbox data-k=upd><span class=k>check github for updates</span></label>
  <div class=row><span class=k>sound when input needed</span><button id=snd class=pick>choose…</button><button id=sndx class=pick>✕</button></div>
 </div>
 <div id=x></div><script>
- var MODE='list',LAST=[],PW=0;
- var S={op:1,autoExpand:1,hideIdle:0,onTop:1,compact:0,showUsage:1,showCtx:1,menuBar:1,notify:0,sound:0,statStack:1,slabel:'',soundFile:''};   // user settings (persisted via Swift)
+ var MODE='list',LAST=[],PW=0,UPD='';   // UPD: newer release found by Swift (empty = up to date)
+ var S={op:1,autoExpand:1,hideIdle:0,onTop:1,compact:0,showUsage:1,showCtx:1,menuBar:1,notify:0,sound:0,statStack:1,upd:1,slabel:'',soundFile:''};   // user settings (persisted via Swift)
  function ago(s){return s<60?s+'s':s<3600?(s/60|0)+'m':(s/3600|0)+'h'}
  function esc(t){let d=document.createElement('div');d.textContent=t||'';return d.innerHTML}
  function focusit(el){try{window.webkit.messageHandlers.focus.postMessage({tty:el.dataset.t,cwd:el.dataset.c,pid:+el.dataset.p})}catch(e){}}
@@ -133,7 +137,7 @@ let HTML = """
    document.getElementById('slabel').value=S.slabel||'';
    var f=S.soundFile||'';document.getElementById('snd').textContent=f?f.split('/').pop():'choose…';
    document.getElementById('snd').title=f;document.getElementById('sndx').style.display=f?'':'none'}
- function setCfg(m,pref){MODE=m;if(pref)S=Object.assign({op:1,autoExpand:1,hideIdle:0,onTop:1,compact:0,showUsage:1,showCtx:1,menuBar:1,notify:0,sound:0,statStack:1,slabel:'',soundFile:''},pref);
+ function setCfg(m,pref){MODE=m;if(pref)S=Object.assign({op:1,autoExpand:1,hideIdle:0,onTop:1,compact:0,showUsage:1,showCtx:1,menuBar:1,notify:0,sound:0,statStack:1,upd:1,slabel:'',soundFile:''},pref);
    document.body.className='m-'+m;syncUI();render(LAST)}
  function setMode(m){setCfg(m,S);post()}
  // status marker, shared by list + bubble
@@ -189,11 +193,14 @@ let HTML = """
      x.innerHTML='<div class="bwrap'+(waitN?' hot':'')+'">'+head+inner+'</div>';
      document.getElementById('bexp').onclick=function(e){e.stopPropagation();setMode('list')};
      fit();dragLayout();return}
-   if(!v.length){x.innerHTML='<div class=empty>'+(S.hideIdle?'nothing active':'no active sessions')+'</div>';fit();dragLayout();return}
-   x.innerHTML=v.map(card).join('');fit();dragLayout()}
+   var top=UPD?'<div class=upd id=upd>⬆ v'+esc(UPD)+' available — click to download</div>':'';
+   if(!v.length){x.innerHTML=top+'<div class=empty>'+(S.hideIdle?'nothing active':'no active sessions')+'</div>';fit();dragLayout();return}
+   x.innerHTML=top+v.map(card).join('');fit();dragLayout()}
+ function setUpdate(v){UPD=v;render(LAST)}   // called by Swift when GitHub has a newer tag
  // Focus on mousedown, delegated from the stable container: the 2s refresh replaces the cards'
  // innerHTML, so a per-card onclick is lost whenever a redraw lands between press and release.
  document.getElementById('x').addEventListener('mousedown',function(e){
+   if(e.target.closest&&e.target.closest('.upd')){try{window.webkit.messageHandlers.cfg.postMessage(JSON.stringify({update:1}))}catch(_){}return}
    var c=e.target.closest?e.target.closest('.c,.bc'):null;if(c)focusit(c)});
  document.getElementById('gear').onclick=function(){document.getElementById('set').classList.toggle('open');fit()};
  document.getElementById('quit').onclick=function(){try{window.webkit.messageHandlers.cfg.postMessage(JSON.stringify({quit:1}))}catch(e){}};

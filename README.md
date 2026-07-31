@@ -48,6 +48,8 @@ logs (`~/.claude/**`) directly and links only against system frameworks.
 - **Resource usage** — optional CPU %, memory, and context-token size (`117K`) per session.
 - **Notifications** — optional ping when a session finishes or needs input (sound optional),
   or your own audio file played whenever a session needs you.
+- **Self-updating** — checks GitHub for a newer release, shows a notice, and (after asking)
+  downloads it, replaces itself and restarts. Switch off in Settings.
 - **Two modes** — a full **list** or a compact **bubble** you can tuck into a corner.
   The bubble glows amber the moment a session needs input; its rows click through to focus a
   session, and its header (`⠿` drag · `▤` expand) is what switches back to the list.
@@ -95,8 +97,13 @@ logs (`~/.claude/**`) directly and links only against system frameworks.
    scroll down → **Open Anyway**.
 
 The app needs no runtime — the binary links only macOS system frameworks. It contains no
-telemetry and only reads your local `~/.claude` logs; the Gatekeeper prompt is purely because
+telemetry and reads only your local `~/.claude` logs; the Gatekeeper prompt is purely because
 the project isn't paying for Apple notarization.
+
+Its one network call is the update check: an unauthenticated `GET` to the GitHub releases API at
+launch and every 6h, sending nothing but the request. A newer tag lights up a notice in the HUD
+and the menu; clicking it asks before downloading `Claudewatch.zip`, replacing the app in place,
+and restarting it. Turn the whole thing off with Settings → **check github for updates**.
 
 > On first click-to-focus, macOS will also ask for **Automation** permission (to raise the terminal tab).
 
@@ -116,6 +123,12 @@ quietly does nothing if it's already running or the app isn't installed (e.g. yo
 with `swift run`). The hook never touches Gatekeeper — `/claudewatch:approve` runs the
 `xattr -dr com.apple.quarantine` line from step 3 above, only on Claudewatch.app, and only when
 you ask for it. No MCP servers, no agents, no per-turn context cost.
+
+To have the plugin update itself, run `/plugin`, go to **Marketplaces**, select **claudewatch**
+and choose **Enable auto-update** — third-party marketplaces have it off by default. Each release
+bumps the version in `.claude-plugin/marketplace.json` (via `scripts/set-version.sh`), which is
+what tells Claude Code an update exists. Otherwise refresh by hand with
+`/plugin marketplace update claudewatch`.
 
 ### Build it yourself
 

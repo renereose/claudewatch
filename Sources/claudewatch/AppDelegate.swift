@@ -131,6 +131,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
             menu.addItem(it)
         }
         menu.addItem(.separator())
+        if !newVersion.isEmpty {
+            let it = NSMenuItem(title: "⬆ update available — v\(newVersion)", action: #selector(promptUpdate), keyEquivalent: "")
+            it.target = self; menu.addItem(it)
+        }
         for (title, sel, key) in [("Show claudewatch", #selector(showPanel), ""), ("Quit", #selector(quitApp), "q")] {
             let it = NSMenuItem(title: title, action: sel, keyEquivalent: key)
             it.target = self; menu.addItem(it)
@@ -170,6 +174,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
     var notifyOn = false                            // fire a system notification on state changes (off by default)
     var soundOn = false                             // play a sound with notifications
     var soundFile = ""                              // custom audio played when a session needs you
+    var updateOn = true                             // check GitHub for a newer release
+    var newVersion = ""                             // set once a newer release is found
     var waitSound: NSSound?                         // held: an NSSound that goes out of scope stops playing
     var statusFmt = ""                              // custom menu-bar count label (empty = plain number)
     var statusStack = true                          // big count label + CPU/RAM stacked to its right
@@ -184,6 +190,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
         if notifyOn { requestNotifyAuth() }         // ask only once the user actually enables notifications
         soundOn = (p["sound"] as? NSNumber)?.boolValue ?? false
         soundFile = (p["soundFile"] as? String) ?? ""
+        updateOn = (p["upd"] as? NSNumber)?.boolValue ?? true
+        if updateOn { checkUpdate() }               // re-enabled mid-session → check right away
         statusFmt = (p["slabel"] as? String) ?? ""
         statusStack = (p["statStack"] as? NSNumber)?.boolValue ?? true
         setMenuBar((p["menuBar"] as? NSNumber)?.boolValue ?? true)
@@ -223,6 +231,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
            let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] {
             if j["quit"] != nil { NSApp.terminate(nil); return }
             if j["pickSound"] != nil { pickSound(); return }
+            if j["update"] != nil { promptUpdate(); return }
             if let f = (j["fit"] as? NSNumber)?.doubleValue { contentH = CGFloat(max(44, min(680, f))) }
             // Draggable bar gaps (list mode), in CSS px top-left → flip to view coords.
             if let dr = j["drag"] as? [[String: Any]] {
@@ -294,11 +303,112 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
             UNUserNotificationCenter.current().delegate = self
         }                                                // auth is requested lazily when notifications are enabled
         Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in self.refresh() }
+        checkUpdate()                        // and again every 6h, for HUDs that stay up for days
+        Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { _ in self.checkUpdate() }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             self.web.evaluateJavaScript("setCfg('\(self.mode)',\(self.prefJSON))")   // push prefs into the view
             self.refresh()
         }
     }
+    // Update check: one unauthenticated GET to the GitHub releases API, at launch and every 6h.
+    // Nothing is sent but the request itself, nothing is downloaded or installed — a newer tag
+    // just lights up a notice in the HUD and the menu, which opens the releases page when clicked.
+    // Dev builds have no bundle version, so they never check. Off via Settings → check for updates.
+    func checkUpdate() {
+        guard updateOn, newVersion.isEmpty,
+              let cur = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
+              let u = URL(string: "https://api.github.com/repos/renereose/claudewatch/releases/latest")
+        else { return }
+        URLSession.shared.dataTask(with: u) { [weak self] d, _, _ in
+            guard let d, let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any],
+                  let tag = j["tag_name"] as? String else { return }
+            let latest = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
+            guard AppDelegate.isNewer(latest, than: cur) else { return }
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.newVersion = latest
+                self.web.evaluateJavaScript("setUpdate('\(latest)')")
+            }
+        }.resume()
+    }
+    // Numeric field-by-field compare — "1.10.0" is newer than "1.9.0". Missing fields count as 0.
+    static func isNewer(_ a: String, than b: String) -> Bool {
+        let pa = a.split(separator: ".").map { Int($0) ?? 0 }, pb = b.split(separator: ".").map { Int($0) ?? 0 }
+        for i in 0..<max(pa.count, pb.count) {
+            let x = i < pa.count ? pa[i] : 0, y = i < pb.count ? pb[i] : 0
+            if x != y { return x > y }
+        }
+        return false
+    }
+    @objc func openReleases() {
+        NSWorkspace.shared.open(URL(string: "https://github.com/renereose/claudewatch/releases/latest")!)
+    }
+    static let zipURL = URL(string: "https://github.com/renereose/claudewatch/releases/latest/download/Claudewatch.zip")!
+
+    // Download the release zip and swap it in for `app`. Blocking — callers run it off the main
+    // thread. Unpacks into a scratch dir *next to* the installed app so the final swap is a
+    // same-volume replaceItemAt (atomic, keeps a backup): any failure before it throws and leaves
+    // the installed app untouched. ponytail: no progress bar, no delta updates — it's a 120K zip.
+    static func downloadAndReplace(zip: URL = zipURL, app: URL) throws {
+        let fm = FileManager.default
+        let data = try Data(contentsOf: zip)
+        let work = app.deletingLastPathComponent().appendingPathComponent(".claudewatch-update")
+        try? fm.removeItem(at: work)
+        try fm.createDirectory(at: work, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: work) }
+        let zipFile = work.appendingPathComponent("Claudewatch.zip")
+        try data.write(to: zipFile)
+        let p = Process()                                  // same tool build.sh packs it with
+        p.launchPath = "/usr/bin/ditto"; p.arguments = ["-x", "-k", zipFile.path, work.path]
+        try p.run(); p.waitUntilExit()
+        let fresh = work.appendingPathComponent("Claudewatch.app")
+        guard p.terminationStatus == 0,
+              fm.fileExists(atPath: fresh.appendingPathComponent("Contents/MacOS/claudewatch").path) else {
+            throw NSError(domain: "claudewatch", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "the downloaded archive isn't a Claudewatch.app"])
+        }
+        _ = try fm.replaceItemAt(app, withItemAt: fresh)
+    }
+    // Clicking the update notice. Always asks first — replacing the app and restarting it is not
+    // something to do behind the user's back, even when they asked for auto-update.
+    @objc func promptUpdate() {
+        guard !newVersion.isEmpty else { return }
+        guard Bundle.main.bundleIdentifier != nil else { return openReleases() }   // dev build: nothing to replace
+        let a = NSAlert()
+        a.messageText = "Update claudewatch to v\(newVersion)?"
+        a.informativeText = "Downloads the release from GitHub, replaces this app, and restarts it."
+        a.addButton(withTitle: "Update & restart")
+        a.addButton(withTitle: "Open release page")
+        a.addButton(withTitle: "Later")
+        NSApp.activate(ignoringOtherApps: true)
+        switch a.runModal() {
+        case .alertFirstButtonReturn:
+            let app = Bundle.main.bundleURL
+            DispatchQueue.global().async {
+                do {
+                    try AppDelegate.downloadAndReplace(app: app)
+                    DispatchQueue.main.async {
+                        let cfg = NSWorkspace.OpenConfiguration(); cfg.createsNewApplicationInstance = true
+                        NSWorkspace.shared.openApplication(at: app, configuration: cfg) { _, _ in
+                            DispatchQueue.main.async { NSApp.terminate(nil) }
+                        }
+                    }
+                } catch {
+                    DispatchQueue.main.async { self.updateFailed(error) }
+                }
+            }
+        case .alertSecondButtonReturn: openReleases()
+        default: break
+        }
+    }
+    func updateFailed(_ e: Error) {
+        let a = NSAlert()
+        a.messageText = "Update failed"
+        a.informativeText = "\(e.localizedDescription)\n\nThe installed app is unchanged — you can download the update by hand."
+        a.addButton(withTitle: "Open release page"); a.addButton(withTitle: "Cancel")
+        if a.runModal() == .alertFirstButtonReturn { openReleases() }
+    }
+
     // Ping when a session flips into "needs you" or finishes a turn. Keyed by pid; a session's
     // first appearance seeds prevState without firing, so startup (and new sessions) don't spam.
     func fireNotifications(_ rows: [[String: Any]]) {

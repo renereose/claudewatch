@@ -71,7 +71,22 @@ if CommandLine.arguments.contains("--selftest") {
     ok(d.keepCopy(kept, into: tmp).path == kept.path, "re-picking our own copy is a no-op")
     try? FileManager.default.removeItem(at: tmp)
 
+    // Update check compares release tags numerically, not as strings.
+    ok(AppDelegate.isNewer("1.5.0", than: "1.4.0"), "1.5.0 > 1.4.0")
+    ok(AppDelegate.isNewer("1.10.0", than: "1.9.0"), "1.10.0 > 1.9.0 (not a string compare)")
+    ok(AppDelegate.isNewer("2.0", than: "1.9.9"), "missing fields count as 0")
+    ok(!AppDelegate.isNewer("1.4.0", than: "1.4.0"), "same version → no update")
+    ok(!AppDelegate.isNewer("1.3.9", than: "1.4.0"), "older release → no update")
+
     print("selftest passed"); exit(0)
+}
+
+// --selftest-update <Claudewatch.app>: run the real updater — download the latest release and
+// swap it in for the given app copy. Point it at a throwaway copy, never your installed one.
+if let i = CommandLine.arguments.firstIndex(of: "--selftest-update"), i + 1 < CommandLine.arguments.count {
+    let app = URL(fileURLWithPath: CommandLine.arguments[i + 1])
+    do { try AppDelegate.downloadAndReplace(app: app); print("replaced \(app.path)"); exit(0) }
+    catch { FileHandle.standardError.write("update failed: \(error.localizedDescription)\n".data(using: .utf8)!); exit(1) }
 }
 
 // --html: print the runtime UI document (for offline/browser UI testing).
