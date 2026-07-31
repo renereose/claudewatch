@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Claude Code plugin + marketplace.** `/plugin marketplace add renereose/claudewatch` then
   `/plugin install claudewatch@claudewatch` installs a plugin whose only job is a `SessionStart`
-  hook that opens the HUD if it is not already running. No commands, agents, or context cost.
+  hook that opens the HUD if it is not already running, plus a `/claudewatch:approve` command that
+  clears the app's one-time Gatekeeper quarantine on request. No MCP servers, no context cost.
 
 ## [1.4.0] - 2026-07-31
 

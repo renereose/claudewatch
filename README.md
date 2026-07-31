@@ -102,19 +102,20 @@ the project isn't paying for Apple notarization.
 
 ### Claude Code plugin (optional)
 
-Once the app is installed **and opened once** (step 3 above — the plugin can't clear Gatekeeper
-for you), it starts the HUD for you whenever a Claude Code session starts:
+Install the app first, then:
 
 ```sh
 /plugin marketplace add renereose/claudewatch
 /plugin install claudewatch@claudewatch
 /reload-plugins
+/claudewatch:approve      # once: clears Gatekeeper quarantine and launches the app
 ```
 
-That's all it does — one `SessionStart` hook that opens Claudewatch if it isn't already running,
-and quietly does nothing if the app isn't installed (or was never registered, e.g. you only run
-it with `swift run`). It adds no commands, agents, MCP servers,
-or context cost, and the HUD works exactly the same without it.
+From then on a `SessionStart` hook opens the HUD whenever a Claude Code session starts, and
+quietly does nothing if it's already running or the app isn't installed (e.g. you only run it
+with `swift run`). The hook never touches Gatekeeper — `/claudewatch:approve` runs the
+`xattr -dr com.apple.quarantine` line from step 3 above, only on Claudewatch.app, and only when
+you ask for it. No MCP servers, no agents, no per-turn context cost.
 
 ### Build it yourself
 
