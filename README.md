@@ -102,7 +102,8 @@ the project isn't paying for Apple notarization.
 
 ### Claude Code plugin (optional)
 
-Once the app is installed, the plugin starts it for you whenever a Claude Code session starts:
+Once the app is installed **and opened once** (step 3 above — the plugin can't clear Gatekeeper
+for you), it starts the HUD for you whenever a Claude Code session starts:
 
 ```sh
 /plugin marketplace add renereose/claudewatch
@@ -111,7 +112,8 @@ Once the app is installed, the plugin starts it for you whenever a Claude Code s
 ```
 
 That's all it does — one `SessionStart` hook that opens Claudewatch if it isn't already running,
-and quietly does nothing if the app isn't installed. It adds no commands, agents, MCP servers,
+and quietly does nothing if the app isn't installed (or was never registered, e.g. you only run
+it with `swift run`). It adds no commands, agents, MCP servers,
 or context cost, and the HUD works exactly the same without it.
 
 ### Build it yourself
