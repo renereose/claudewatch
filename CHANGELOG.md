@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-07-31
+
 ### Changed
 - **Bubble mode no longer expands on any click.** The pill gets its own header strip — `⠿` to
   drag, a session count, and a `▤` button that expands to the list. Clicking a session row now
@@ -120,7 +122,8 @@ First public release.
 - Settings: opacity, pop-open-when-input-needed, hide idle sessions, float-above-all,
   compact view. Window position and preferences persist across launches.
 
-[Unreleased]: https://github.com/renereose/claudewatch/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/renereose/claudewatch/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/renereose/claudewatch/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/renereose/claudewatch/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/renereose/claudewatch/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/renereose/claudewatch/compare/v1.1.3...v1.2.0
