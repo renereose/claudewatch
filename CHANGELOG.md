@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-07-31
+
+### Added
+- **Restarts itself when the app bundle is replaced.** A running HUD used to keep executing the
+  old build until you quit it by hand — after a manual download dropped into `/Applications`, a
+  sync, or an update installed from another window. It now reads the version off disk once a
+  minute and restarts into the new build when it changes. The in-app updater already restarted;
+  this covers every other way the app gets replaced.
+
 ## [1.5.1] - 2026-07-31
 
 ### Fixed
@@ -150,7 +159,8 @@ First public release.
 - Settings: opacity, pop-open-when-input-needed, hide idle sessions, float-above-all,
   compact view. Window position and preferences persist across launches.
 
-[Unreleased]: https://github.com/renereose/claudewatch/compare/v1.5.1...HEAD
+[Unreleased]: https://github.com/renereose/claudewatch/compare/v1.5.2...HEAD
+[1.5.2]: https://github.com/renereose/claudewatch/compare/v1.5.1...v1.5.2
 [1.5.1]: https://github.com/renereose/claudewatch/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/renereose/claudewatch/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/renereose/claudewatch/compare/v1.3.0...v1.4.0

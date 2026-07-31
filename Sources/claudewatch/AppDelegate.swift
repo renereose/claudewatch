@@ -177,6 +177,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
     var soundFile = ""                              // custom audio played when a session needs you
     var updateOn = true                             // check GitHub for a newer release
     var newVersion = ""                             // set once a newer release is found
+    let startVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
     var appStale = false                            // this app build is behind that release
     var pluginStale = false                         // the installed Claude Code plugin is too
     var waitSound: NSSound?                         // held: an NSSound that goes out of scope stops playing
@@ -312,6 +313,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
         Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in self.refresh() }
         checkUpdate()                        // and hourly, for HUDs that stay up for days
         Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { _ in self.checkUpdate() }
+        Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { _ in self.restartIfReplaced() }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             self.web.evaluateJavaScript("setCfg('\(self.mode)',\(self.prefJSON))")   // push prefs into the view
             self.refresh()
@@ -366,6 +368,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
             if x != y { return x > y }
         }
         return false
+    }
+    // Restart into whatever build is on disk now. Used after our own update, and by the minute
+    // check below when someone else replaced the bundle underneath us.
+    func relaunchSelf() {
+        let cfg = NSWorkspace.OpenConfiguration(); cfg.createsNewApplicationInstance = true
+        NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: cfg) { _, _ in
+            DispatchQueue.main.async { NSApp.terminate(nil) }
+        }
+    }
+    // The bundle we launched from can be swapped while we run — a manual download dropped into
+    // /Applications, a sync, another window's updater. The running process keeps the old code
+    // until something restarts it, so read the version off disk each minute and restart on change.
+    // The fresh instance starts equal to disk, so this can't loop.
+    func restartIfReplaced() {
+        guard Bundle.main.bundleIdentifier != nil, !startVersion.isEmpty else { return }
+        let plist = Bundle.main.bundleURL.appendingPathComponent("Contents/Info.plist")
+        guard let d = NSDictionary(contentsOf: plist),
+              let onDisk = d["CFBundleShortVersionString"] as? String,
+              onDisk != startVersion else { return }
+        relaunchSelf()
     }
     @objc func openReleases() {
         NSWorkspace.shared.open(URL(string: "https://github.com/renereose/claudewatch/releases/latest")!)
@@ -430,12 +452,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
             DispatchQueue.global().async {
                 do {
                     try AppDelegate.downloadAndReplace(app: app)
-                    DispatchQueue.main.async {
-                        let cfg = NSWorkspace.OpenConfiguration(); cfg.createsNewApplicationInstance = true
-                        NSWorkspace.shared.openApplication(at: app, configuration: cfg) { _, _ in
-                            DispatchQueue.main.async { NSApp.terminate(nil) }
-                        }
-                    }
+                    DispatchQueue.main.async { self.relaunchSelf() }
                 } catch {
                     DispatchQueue.main.async { self.updateFailed(error) }
                 }
