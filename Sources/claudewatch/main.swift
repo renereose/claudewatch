@@ -78,6 +78,16 @@ if CommandLine.arguments.contains("--selftest") {
     ok(!AppDelegate.isNewer("1.4.0", than: "1.4.0"), "same version → no update")
     ok(!AppDelegate.isNewer("1.3.9", than: "1.4.0"), "older release → no update")
 
+    // Plugin staleness is read out of Claude Code's install ledger — newest entry wins, and a
+    // plugin that isn't installed is never "behind".
+    let ledger = """
+    {"version":2,"plugins":{"other@x":[{"version":"9.9.9"}],
+     "claudewatch@claudewatch":[{"scope":"local","version":"1.2.0"},{"scope":"user","version":"1.10.0"}]}}
+    """.data(using: .utf8)!
+    ok(AppDelegate.pluginVersion(from: ledger) == "1.10.0", "newest installed plugin scope wins")
+    ok(AppDelegate.pluginVersion(from: Data("{\"plugins\":{}}".utf8)) == nil, "plugin not installed → nil")
+    ok(AppDelegate.pluginVersion(from: Data("not json".utf8)) == nil, "unreadable ledger → nil, no crash")
+
     print("selftest passed"); exit(0)
 }
 

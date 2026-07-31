@@ -111,12 +111,15 @@ let HTML = """
  <div class=row><span class=k>sound when input needed</span><button id=snd class=pick>choose…</button><button id=sndx class=pick>✕</button></div>
 </div>
 <div id=x></div><script>
- var MODE='list',LAST=[],PW=0,UPD='';   // UPD: newer release found by Swift (empty = up to date)
+ var MODE='list',LAST=[],PW=0,UPD='',UPDAPP=0,UPDPLUG=0,POP=0;   // UPD: newer release found by Swift (empty = up to
+ // date). POP: we auto-expanded the bubble ourselves, so snap back once nothing needs you.
  var S={op:1,autoExpand:1,hideIdle:0,onTop:1,compact:0,showUsage:1,showCtx:1,menuBar:1,notify:0,sound:0,statStack:1,upd:1,slabel:'',soundFile:''};   // user settings (persisted via Swift)
  function ago(s){return s<60?s+'s':s<3600?(s/60|0)+'m':(s/3600|0)+'h'}
  function esc(t){let d=document.createElement('div');d.textContent=t||'';return d.innerHTML}
  function focusit(el){try{window.webkit.messageHandlers.focus.postMessage({tty:el.dataset.t,cwd:el.dataset.c,pid:+el.dataset.p})}catch(e){}}
- function post(){try{window.webkit.messageHandlers.cfg.postMessage(JSON.stringify({mode:MODE,pref:S}))}catch(e){}}
+ // temp=1: a mode Swift should apply but not remember — the pop-open/snap-back pair, so the
+ // mode you picked yourself is still what comes back on the next launch.
+ function post(temp){try{window.webkit.messageHandlers.cfg.postMessage(JSON.stringify({mode:MODE,pref:S,temp:temp?1:0}))}catch(e){}}
  function fit(){try{window.webkit.messageHandlers.cfg.postMessage(JSON.stringify({fit:document.body.scrollHeight}))}catch(e){}}
  // report the header's draggable gaps (header minus its buttons) so Swift can place drag handles
  // there. List mode: the title bar. Bubble mode: the pill's own header strip — everything below
@@ -139,7 +142,7 @@ let HTML = """
    document.getElementById('snd').title=f;document.getElementById('sndx').style.display=f?'':'none'}
  function setCfg(m,pref){MODE=m;if(pref)S=Object.assign({op:1,autoExpand:1,hideIdle:0,onTop:1,compact:0,showUsage:1,showCtx:1,menuBar:1,notify:0,sound:0,statStack:1,upd:1,slabel:'',soundFile:''},pref);
    document.body.className='m-'+m;syncUI();render(LAST)}
- function setMode(m){setCfg(m,S);post()}
+ function setMode(m,temp){if(!temp)POP=0;setCfg(m,S);post(temp)}
  // status marker, shared by list + bubble
  function mark(r){return r.state=='done'?'<span class=chk>✓</span>':
           r.state=='interrupted'?'<span class=int>⊘</span>':
@@ -180,8 +183,9 @@ let HTML = """
  function render(rows){LAST=rows||[];var x=document.getElementById('x');
    var v=S.hideIdle?LAST.filter(function(r){return r.state=='working'||r.state=='waiting'}):LAST;
    var waitN=v.filter(function(r){return r.state=='waiting'}).length;
-   if(S.autoExpand&&MODE=='bubble'&&waitN>PW){PW=waitN;setMode('list');return}   // rising edge → pop open
+   if(S.autoExpand&&MODE=='bubble'&&waitN>PW){PW=waitN;POP=1;setMode('list',1);return}   // rising edge → pop open
    PW=waitN;
+   if(POP&&MODE=='list'&&!waitN){POP=0;setMode('bubble',1);return}   // nothing needs you → back to the pill
    if(MODE=='bubble'){
      // Header strip = the only drag + expand affordance; rows below click through to focus.
      var head='<div class=bhead id=bhead><span class=grip>⠿</span><span class=bct>'+
@@ -193,10 +197,10 @@ let HTML = """
      x.innerHTML='<div class="bwrap'+(waitN?' hot':'')+'">'+head+inner+'</div>';
      document.getElementById('bexp').onclick=function(e){e.stopPropagation();setMode('list')};
      fit();dragLayout();return}
-   var top=UPD?'<div class=upd id=upd>⬆ v'+esc(UPD)+' available — click to download</div>':'';
+   var top=UPD?'<div class=upd id=upd>⬆ '+(UPDAPP?'v'+esc(UPD)+' available — click to update':'plugin update — v'+esc(UPD))+'</div>':'';
    if(!v.length){x.innerHTML=top+'<div class=empty>'+(S.hideIdle?'nothing active':'no active sessions')+'</div>';fit();dragLayout();return}
    x.innerHTML=top+v.map(card).join('');fit();dragLayout()}
- function setUpdate(v){UPD=v;render(LAST)}   // called by Swift when GitHub has a newer tag
+ function setUpdate(v,app,plug){UPD=v;UPDAPP=app;UPDPLUG=plug;render(LAST)}   // Swift found a newer tag
  // Focus on mousedown, delegated from the stable container: the 2s refresh replaces the cards'
  // innerHTML, so a per-card onclick is lost whenever a redraw lands between press and release.
  document.getElementById('x').addEventListener('mousedown',function(e){

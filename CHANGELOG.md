@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Pop-open no longer overwrites your view mode.** One "needs you" used to expand the bubble to
+  the list and persist list as your preference, so the pill never came back. The auto-expansion is
+  now temporary: the HUD snaps back to the bubble once nothing needs input, and the mode you chose
+  yourself is what returns on the next launch.
+
+### Added
+- The update check now also notices when the installed **Claude Code plugin** is behind the
+  latest release and says so — Claude Code owns updating it, so the notice hands you
+  `/plugin marketplace update claudewatch` (with a Copy button) rather than touching its cache.
+
 ## [1.5.0] - 2026-07-31
 
 ### Added

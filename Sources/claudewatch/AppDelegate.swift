@@ -132,7 +132,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
         }
         menu.addItem(.separator())
         if !newVersion.isEmpty {
-            let it = NSMenuItem(title: "⬆ update available — v\(newVersion)", action: #selector(promptUpdate), keyEquivalent: "")
+            let what = appStale ? "update available" : "plugin update"
+            let it = NSMenuItem(title: "⬆ \(what) — v\(newVersion)", action: #selector(promptUpdate), keyEquivalent: "")
             it.target = self; menu.addItem(it)
         }
         for (title, sel, key) in [("Show claudewatch", #selector(showPanel), ""), ("Quit", #selector(quitApp), "q")] {
@@ -176,6 +177,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
     var soundFile = ""                              // custom audio played when a session needs you
     var updateOn = true                             // check GitHub for a newer release
     var newVersion = ""                             // set once a newer release is found
+    var appStale = false                            // this app build is behind that release
+    var pluginStale = false                         // the installed Claude Code plugin is too
     var waitSound: NSSound?                         // held: an NSSound that goes out of scope stops playing
     var statusFmt = ""                              // custom menu-bar count label (empty = plain number)
     var statusStack = true                          // big count label + CPU/RAM stacked to its right
@@ -248,7 +251,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
                 return
             }
             if let mo = j["mode"] as? String, mo != mode {
-                mode = mo; UserDefaults.standard.set(mo, forKey: "cw.mode")
+                mode = mo
+                // temp: the pop-open (and its snap-back) when a session needs you. Applied, but
+                // never written — otherwise one "needs you" would silently make list your
+                // remembered mode and the bubble would never come back.
+                if (j["temp"] as? NSNumber)?.boolValue != true { UserDefaults.standard.set(mo, forKey: "cw.mode") }
                 listFallbackGrip()
             }
             if let pref = j["pref"] as? [String: Any] {
@@ -323,13 +330,33 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
             guard let d, let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any],
                   let tag = j["tag_name"] as? String else { return }
             let latest = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
-            guard AppDelegate.isNewer(latest, than: cur) else { return }
+            // The app and the Claude Code plugin ship from the same tag but update through
+            // different channels, so either can be the stale one.
+            let appOld = AppDelegate.isNewer(latest, than: cur)
+            let plugOld = AppDelegate.installedPluginVersion().map { AppDelegate.isNewer(latest, than: $0) } ?? false
+            guard appOld || plugOld else { return }
             DispatchQueue.main.async {
                 guard let self = self else { return }
-                self.newVersion = latest
-                self.web.evaluateJavaScript("setUpdate('\(latest)')")
+                self.newVersion = latest; self.appStale = appOld; self.pluginStale = plugOld
+                self.web.evaluateJavaScript("setUpdate('\(latest)',\(appOld ? 1 : 0),\(plugOld ? 1 : 0))")
             }
         }.resume()
+    }
+    // Version of the installed Claude Code plugin, from Claude Code's own install ledger.
+    // Read-only: Claude Code owns updating its plugins, we only notice when ours is behind.
+    static func installedPluginVersion() -> String? {
+        let p = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".claude/plugins/installed_plugins.json")
+        guard let d = try? Data(contentsOf: p) else { return nil }
+        return pluginVersion(from: d)
+    }
+    // Newest version across the ledger's entries — the same plugin can be installed at more than
+    // one scope. nil when it isn't installed at all (then there's nothing to be behind).
+    static func pluginVersion(from data: Data) -> String? {
+        guard let j = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let all = j["plugins"] as? [String: Any],
+              let mine = all["claudewatch@claudewatch"] as? [[String: Any]] else { return nil }
+        return mine.compactMap { $0["version"] as? String }.max { isNewer($1, than: $0) }
     }
     // Numeric field-by-field compare — "1.10.0" is newer than "1.9.0". Missing fields count as 0.
     static func isNewer(_ a: String, than b: String) -> Bool {
@@ -371,12 +398,28 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
     }
     // Clicking the update notice. Always asks first — replacing the app and restarting it is not
     // something to do behind the user's back, even when they asked for auto-update.
+    // The plugin lives in Claude Code's own cache and Claude Code updates it — the most we can
+    // usefully do is hand over the command, so it's one paste away.
+    @objc func copyPluginUpdateCommand() {
+        let cmd = "/plugin marketplace update claudewatch"
+        NSPasteboard.general.clearContents(); NSPasteboard.general.setString(cmd, forType: .string)
+    }
     @objc func promptUpdate() {
         guard !newVersion.isEmpty else { return }
+        guard appStale else {                       // only the plugin is behind
+            let a = NSAlert()
+            a.messageText = "Claude Code plugin update — v\(newVersion)"
+            a.informativeText = "The app is current. Your claudewatch plugin is older; Claude Code updates it, not this app.\n\nRun in Claude Code:\n/plugin marketplace update claudewatch"
+            a.addButton(withTitle: "Copy command"); a.addButton(withTitle: "Later")
+            NSApp.activate(ignoringOtherApps: true)
+            if a.runModal() == .alertFirstButtonReturn { copyPluginUpdateCommand() }
+            return
+        }
         guard Bundle.main.bundleIdentifier != nil else { return openReleases() }   // dev build: nothing to replace
         let a = NSAlert()
         a.messageText = "Update claudewatch to v\(newVersion)?"
         a.informativeText = "Downloads the release from GitHub, replaces this app, and restarts it."
+            + (pluginStale ? "\n\nYour Claude Code plugin is also behind — update it separately with\n/plugin marketplace update claudewatch" : "")
         a.addButton(withTitle: "Update & restart")
         a.addButton(withTitle: "Open release page")
         a.addButton(withTitle: "Later")
