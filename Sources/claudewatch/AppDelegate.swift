@@ -3,6 +3,7 @@
 import Cocoa
 import WebKit
 import UserNotifications
+import UniformTypeIdentifiers
 
 class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMessageHandler, NSMenuDelegate, UNUserNotificationCenterDelegate {
     var web: WKWebView!
@@ -175,6 +176,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
     var showUsage = true                            // gates cpu/mem in the menu-bar title
     var notifyOn = false                            // fire a system notification on state changes (off by default)
     var soundOn = false                             // play a sound with notifications
+    var soundFile = ""                              // custom audio played when a session needs you
+    var waitSound: NSSound?                         // held: an NSSound that goes out of scope stops playing
     var statusFmt = ""                              // custom menu-bar count label (empty = plain number)
     var statusStack = true                          // big count label + CPU/RAM stacked to its right
     var statView: StatusView?                       // custom-drawn menu-bar content for stacked layout
@@ -187,6 +190,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
         notifyOn = (p["notify"] as? NSNumber)?.boolValue ?? false
         if notifyOn { requestNotifyAuth() }         // ask only once the user actually enables notifications
         soundOn = (p["sound"] as? NSNumber)?.boolValue ?? false
+        soundFile = (p["soundFile"] as? String) ?? ""
         statusFmt = (p["slabel"] as? String) ?? ""
         statusStack = (p["statStack"] as? NSNumber)?.boolValue ?? true
         setMenuBar((p["menuBar"] as? NSNumber)?.boolValue ?? true)
@@ -225,6 +229,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
         if m.name == "cfg", let s = m.body as? String, let d = s.data(using: .utf8),
            let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] {
             if j["quit"] != nil { NSApp.terminate(nil); return }
+            if j["pickSound"] != nil { pickSound(); return }
             if let f = (j["fit"] as? NSNumber)?.doubleValue { contentH = CGFloat(max(44, min(680, f))) }
             // Draggable bar gaps (list mode), in CSS px top-left → flip to view coords.
             if let dr = j["drag"] as? [[String: Any]], mode == "list" {
@@ -308,11 +313,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
         for r in rows {
             guard let pid = r["pid"] as? Int, let st = r["state"] as? String else { continue }
             next[pid] = st
-            guard notifyOn, let prev = prevState[pid], prev != st else { continue }
+            guard let prev = prevState[pid], prev != st else { continue }
             let name = r["name"] as? String ?? "session"
             if st == "waiting" {
-                notify(title: name, text: (r["wait"] as? String).map { "needs you — \($0)" } ?? "needs you", pid: pid)
-            } else if st == "done" && prev == "working" {
+                // The custom sound stands on its own — no need to also enable notifications for it.
+                let custom = playWaitSound()        // custom file replaces the banner's own sound
+                if notifyOn {
+                    notify(title: name, text: (r["wait"] as? String).map { "needs you — \($0)" } ?? "needs you",
+                           pid: pid, silent: custom)
+                }
+            } else if notifyOn && st == "done" && prev == "working" {
                 notify(title: name, text: "finished", pid: pid)
             }
         }
@@ -327,17 +337,60 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
-    func notify(title: String, text: String, pid: Int = 0) {
+    // Play the user's own audio file (mp3/wav/aiff/…). Returns true if it started, so the
+    // notification can stay silent instead of stacking a second chime on top.
+    @discardableResult func playWaitSound() -> Bool {
+        guard !soundFile.isEmpty, let s = NSSound(contentsOfFile: soundFile, byReference: true) else { return false }
+        waitSound?.stop(); waitSound = s        // ponytail: one at a time; last ping wins
+        return s.play()
+    }
+    // Own a copy in ~/Library/Application Support/claudewatch/ so the sound survives the user
+    // deleting/moving the original (Desktop, Downloads) and app updates — the .app bundle is
+    // replaced wholesale on update, this folder isn't. Falls back to the original path on failure.
+    func keepCopy(_ src: URL, into root: URL? = nil) -> URL {   // root: tests only
+        let fm = FileManager.default
+        guard let base = root ?? fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return src }
+        let dir = base.appendingPathComponent("claudewatch")
+        let dst = dir.appendingPathComponent("needsyou." + (src.pathExtension.isEmpty ? "mp3" : src.pathExtension))
+        if src.standardizedFileURL == dst.standardizedFileURL { return dst }   // re-picking our own copy
+        do {
+            try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            // Wipe old copies first: a previous pick may have had a different extension.
+            for f in (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
+            where f.lastPathComponent.hasPrefix("needsyou.") { try? fm.removeItem(at: f) }
+            try fm.copyItem(at: src, to: dst)
+            return dst
+        } catch { return src }
+    }
+    // Pick the file natively — the WebView can't hand us a usable path. NSApp.activate first:
+    // the panel is non-activating, so without it the open panel opens behind everything.
+    func pickSound() {
+        let p = NSOpenPanel()
+        p.allowedContentTypes = [.audio]
+        p.prompt = "Use sound"
+        NSApp.activate(ignoringOtherApps: true)
+        guard p.runModal() == .OK, let url = p.url else { return }
+        var pref = (try? JSONSerialization.jsonObject(with: Data(prefJSON.utf8))) as? [String: Any] ?? [:]
+        pref["soundFile"] = keepCopy(url).path
+        applyPref(pref)
+        playWaitSound()                          // instant preview of what you just picked
+        if let d = try? JSONSerialization.data(withJSONObject: pref), let s = String(data: d, encoding: .utf8) {
+            prefJSON = s; UserDefaults.standard.set(s, forKey: "cw.pref")
+            web.evaluateJavaScript("setCfg('\(mode)',\(s))")
+        }
+    }
+
+    func notify(title: String, text: String, pid: Int = 0, silent: Bool = false) {
         if Bundle.main.bundleIdentifier != nil {
             let c = UNMutableNotificationContent()
-            c.title = title; c.body = text; c.sound = soundOn ? .default : nil
+            c.title = title; c.body = text; c.sound = (soundOn && !silent) ? .default : nil
             c.userInfo = ["pid": pid]
             let req = UNNotificationRequest(identifier: UUID().uuidString, content: c, trigger: nil)
             UNUserNotificationCenter.current().add(req)
             return
         }
         func esc(_ s: String) -> String { s.replacingOccurrences(of: "\"", with: "'") }
-        let script = "display notification \"\(esc(text))\" with title \"\(esc(title))\"" + (soundOn ? " sound name \"Ping\"" : "")
+        let script = "display notification \"\(esc(text))\" with title \"\(esc(title))\"" + ((soundOn && !silent) ? " sound name \"Ping\"" : "")
         let p = Process(); p.launchPath = "/usr/bin/osascript"; p.arguments = ["-e", script]
         try? p.run()
     }

@@ -26,6 +26,9 @@ let HTML = """
  .set input[type=text]{-webkit-user-select:text;cursor:text}
  .set input[type=checkbox]{accent-color:#34d399;width:13px;height:13px}
  .set .val{color:#6b7280;font-size:10px;width:28px;text-align:right}
+ .set .pick{background:rgba(255,255,255,.08);border:0;border-radius:5px;color:inherit;padding:3px 6px;
+    font:inherit;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .set .pick:hover{color:#d5d8de;background:#2a2e37}
  .m-bubble .bar,.m-bubble .set{display:none}
  .c{background:#1e2127;border:1px solid #2a2e37;border-radius:8px;padding:8px 10px;margin-bottom:6px;cursor:pointer}
  .c *{cursor:pointer}
@@ -94,10 +97,11 @@ let HTML = """
  <label class=row><input type=checkbox data-k=menuBar><span class=k>show menu-bar widget</span></label>
  <label class=row><input type=checkbox data-k=notify><span class=k>notify on finish / input needed</span></label>
  <label class=row><input type=checkbox data-k=sound><span class=k>notification sound</span></label>
+ <div class=row><span class=k>sound when input needed</span><button id=snd class=pick>choose…</button><button id=sndx class=pick>✕</button></div>
 </div>
 <div id=x></div><script>
  var MODE='list',LAST=[],PW=0;
- var S={op:1,autoExpand:1,hideIdle:0,onTop:1,compact:0,showUsage:1,showCtx:1,menuBar:1,notify:0,sound:0,statStack:1,slabel:''};   // user settings (persisted via Swift)
+ var S={op:1,autoExpand:1,hideIdle:0,onTop:1,compact:0,showUsage:1,showCtx:1,menuBar:1,notify:0,sound:0,statStack:1,slabel:'',soundFile:''};   // user settings (persisted via Swift)
  function ago(s){return s<60?s+'s':s<3600?(s/60|0)+'m':(s/3600|0)+'h'}
  function esc(t){let d=document.createElement('div');d.textContent=t||'';return d.innerHTML}
  function focusit(el){try{window.webkit.messageHandlers.focus.postMessage({tty:el.dataset.t,cwd:el.dataset.c,pid:+el.dataset.p})}catch(e){}}
@@ -116,8 +120,10 @@ let HTML = """
    [].forEach.call(document.querySelectorAll('.mb'),function(b){b.classList.toggle('act',b.dataset.m==MODE)});
    var op=document.getElementById('op');op.value=Math.round(S.op*100);document.getElementById('opv').textContent=op.value+'%';
    [].forEach.call(document.querySelectorAll('[data-k]'),function(c){c.checked=!!S[c.dataset.k]});
-   document.getElementById('slabel').value=S.slabel||''}
- function setCfg(m,pref){MODE=m;if(pref)S=Object.assign({op:1,autoExpand:1,hideIdle:0,onTop:1,compact:0,showUsage:1,showCtx:1,menuBar:1,notify:0,sound:0,statStack:1,slabel:''},pref);
+   document.getElementById('slabel').value=S.slabel||'';
+   var f=S.soundFile||'';document.getElementById('snd').textContent=f?f.split('/').pop():'choose…';
+   document.getElementById('snd').title=f;document.getElementById('sndx').style.display=f?'':'none'}
+ function setCfg(m,pref){MODE=m;if(pref)S=Object.assign({op:1,autoExpand:1,hideIdle:0,onTop:1,compact:0,showUsage:1,showCtx:1,menuBar:1,notify:0,sound:0,statStack:1,slabel:'',soundFile:''},pref);
    document.body.className='m-'+m;syncUI();render(LAST)}
  function setMode(m){setCfg(m,S);post()}
  // status marker, shared by list + bubble
@@ -179,5 +185,8 @@ let HTML = """
  document.getElementById('op').oninput=function(){S.op=this.value/100;document.getElementById('opv').textContent=this.value+'%';post()};
  [].forEach.call(document.querySelectorAll('[data-k]'),function(c){c.onchange=function(){S[c.dataset.k]=c.checked?1:0;post();render(LAST)}});
  document.getElementById('slabel').oninput=function(){S.slabel=this.value;post()};
+ // Swift owns the file picker (NSOpenPanel) and pushes the chosen path back via setCfg.
+ document.getElementById('snd').onclick=function(){try{window.webkit.messageHandlers.cfg.postMessage(JSON.stringify({pickSound:1}))}catch(e){}};
+ document.getElementById('sndx').onclick=function(){S.soundFile='';syncUI();post();fit()};
 </script>
 """

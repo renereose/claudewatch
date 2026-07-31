@@ -48,6 +48,29 @@ if CommandLine.arguments.contains("--selftest") {
     ok(d.statusTitle([["state": "waiting", "cpu": 0, "mem": 0]]) == "▸ 1 session · 0% · 0M", "input needed → ▸ glyph")
     ok(d.lead([["state": "interrupted"]]).glyph == "⊘", "all interrupted → ⊘")
 
+    // Custom "needs you" sound: unset or unreadable must be a silent no-op, a real file must play.
+    d.soundFile = ""
+    ok(!d.playWaitSound(), "no custom sound → silence")
+    d.soundFile = "/nope/does-not-exist.mp3"
+    ok(!d.playWaitSound(), "missing file → silence, no crash")
+    d.soundFile = "/System/Library/Sounds/Ping.aiff"
+    ok(d.playWaitSound(), "readable audio file → plays")
+    d.waitSound?.stop()
+
+    // The picked file is copied out of harm's way: deleting the original must not kill the sound.
+    let tmp = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("cwtest-\(getpid())")
+    let orig = tmp.appendingPathComponent("mine.aiff")
+    try! FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+    try! FileManager.default.copyItem(at: URL(fileURLWithPath: "/System/Library/Sounds/Ping.aiff"), to: orig)
+    let kept = d.keepCopy(orig, into: tmp)
+    ok(kept.path != orig.path, "picked file is copied, not referenced in place")
+    try! FileManager.default.removeItem(at: orig)                 // user deletes the original
+    d.soundFile = kept.path
+    ok(d.playWaitSound(), "still plays after the original is deleted")
+    d.waitSound?.stop()
+    ok(d.keepCopy(kept, into: tmp).path == kept.path, "re-picking our own copy is a no-op")
+    try? FileManager.default.removeItem(at: tmp)
+
     print("selftest passed"); exit(0)
 }
 

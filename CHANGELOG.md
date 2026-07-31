@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-31
+
+### Added
+- **Custom sound when a session needs you** — pick any audio file (mp3, wav, aiff, m4a) in
+  Settings and it plays the moment a session flips to "needs you". Works on its own, without
+  enabling notifications; when both are on, the banner stays silent so you hear one sound, not
+  two. The chosen file is copied into `~/Library/Application Support/claudewatch/`, so it keeps
+  working if you move or delete the original, and survives app updates.
+
 ## [1.2.1] - 2026-07-27
 
 ### Fixed
@@ -106,7 +115,8 @@ First public release.
 - Settings: opacity, pop-open-when-input-needed, hide idle sessions, float-above-all,
   compact view. Window position and preferences persist across launches.
 
-[Unreleased]: https://github.com/renereose/claudewatch/compare/v1.2.1...HEAD
+[Unreleased]: https://github.com/renereose/claudewatch/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/renereose/claudewatch/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/renereose/claudewatch/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/renereose/claudewatch/compare/v1.1.3...v1.2.0
 [1.1.3]: https://github.com/renereose/claudewatch/compare/v1.1.2...v1.1.3

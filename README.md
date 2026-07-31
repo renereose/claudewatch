@@ -46,7 +46,8 @@ logs (`~/.claude/**`) directly and links only against system frameworks.
   session (click to focus), plus optional summed CPU / RAM. Fully optional and customizable —
   set your own label template (`{n} worker{s}`).
 - **Resource usage** — optional CPU %, memory, and context-token size (`117K`) per session.
-- **Notifications** — optional ping when a session finishes or needs input (sound optional).
+- **Notifications** — optional ping when a session finishes or needs input (sound optional),
+  or your own audio file played whenever a session needs you.
 - **Two modes** — a full **list** or a compact **bubble** you can tuck into a corner.
   The bubble glows amber the moment a session needs input.
 - **Works with the IDE plugin** — sessions run from the **Cursor** / **VS Code** Claude Code
@@ -70,7 +71,8 @@ logs (`~/.claude/**`) directly and links only against system frameworks.
 - **Multi-config aware** — automatically picks up every `~/.claude*` config dir
   (e.g. `CLAUDE_CONFIG_DIR` aliases).
 - **Settings** — opacity, "pop open when input needed", hide idle sessions, float-above-all,
-  compact view, CPU/RAM and context toggles, menu-bar widget + label, notifications.
+  compact view, CPU/RAM and context toggles, menu-bar widget + label, notifications,
+  custom "needs you" sound.
   Remembers its position and preferences.
 
 ## Install
