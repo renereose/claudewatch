@@ -5,6 +5,9 @@ import WebKit
 import UserNotifications
 import UniformTypeIdentifiers
 
+// 45 -> "45s", 180 -> "3m", 7200 -> "2h" — the same shape the HUD's ago() renders.
+func agoText(_ s: Int) -> String { s < 60 ? "\(s)s" : s < 3600 ? "\(s / 60)m" : "\(s / 3600)h" }
+
 class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMessageHandler, NSMenuDelegate, UNUserNotificationCenterDelegate {
     var web: WKWebView!
     var panel: NSPanel!
@@ -54,6 +57,24 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
         let mem = rows.reduce(0) { $0 + (($1["mem"] as? Int) ?? 0) }
         let m = mem >= 1024 ? String(format: "%.1fG", Double(mem) / 1024) : "\(mem)M"
         return "\(g) \(label) · \(Int(cpu.rounded()))% · \(m)"
+    }
+
+    // The session needing you *after* `afterPid`, wrapping — one press per session, round-robin.
+    // An unknown pid (first press, or that session finished) starts at the top of the list, which
+    // scan() already sorts most-recently-active first. nil when nothing needs you.
+    static func nextWaiting(_ rows: [[String: Any]], after afterPid: Int) -> [String: Any]? {
+        let w = rows.filter { ($0["state"] as? String) == "waiting" }
+        guard !w.isEmpty else { return nil }
+        guard let i = w.firstIndex(where: { ($0["pid"] as? Int) == afterPid }) else { return w[0] }
+        return w[(i + 1) % w.count]
+    }
+    // ⌃⌥⌘J from any app: jump to the next session that needs you, without looking at the HUD.
+    // Nothing waiting → surface the panel, so the key never does nothing.
+    @objc func jumpToNextWaiting() {
+        guard let r = AppDelegate.nextWaiting(lastRows, after: lastJumped) else { return showPanel() }
+        lastJumped = (r["pid"] as? Int) ?? 0
+        focusSession(tty: r["tty"] as? String ?? "", cwd: r["cwd"] as? String ?? "",
+                     pid: (r["pid"] as? NSNumber)?.int32Value ?? 0)
     }
 
     // Overall menu-bar dot state: input-needed wins over working wins over idle.
@@ -185,6 +206,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
     var statusStack = true                          // big count label + CPU/RAM stacked to its right
     var statView: StatusView?                       // custom-drawn menu-bar content for stacked layout
     var prevState: [Int: String] = [:]              // pid -> last seen state, to detect transitions
+    var renagOn = false                             // keep pinging while a session still waits
+    var lastNag: [Int: Double] = [:]                // pid -> when we last pinged about its wait
+    let nagEvery = 300.0                            // ponytail: fixed 5 min; make it a pref if it grates
+    var hotkeyOn = true                             // ⌃⌥⌘J jumps to the next session needing you
+    var lastJumped = 0                              // pid the hotkey landed on last, to cycle from
 
     func applyPref(_ p: [String: Any]) {            // native side-effects of settings
         if let op = (p["op"] as? NSNumber)?.doubleValue { opacity = max(0.2, min(1, op)) }
@@ -194,6 +220,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
         if notifyOn { requestNotifyAuth() }         // ask only once the user actually enables notifications
         soundOn = (p["sound"] as? NSNumber)?.boolValue ?? false
         soundFile = (p["soundFile"] as? String) ?? ""
+        renagOn = (p["renag"] as? NSNumber)?.boolValue ?? false
+        hotkeyOn = (p["hotkey"] as? NSNumber)?.boolValue ?? true
+        setHotkey(hotkeyOn ? { [weak self] in self?.jumpToNextWaiting() } : nil)
         updateOn = (p["upd"] as? NSNumber)?.boolValue ?? true
         if updateOn { checkUpdate() }               // re-enabled mid-session → check right away
         statusFmt = (p["slabel"] as? String) ?? ""
@@ -471,25 +500,33 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
 
     // Ping when a session flips into "needs you" or finishes a turn. Keyed by pid; a session's
     // first appearance seeds prevState without firing, so startup (and new sessions) don't spam.
-    func fireNotifications(_ rows: [[String: Any]]) {
+    // With re-nag on, a session that keeps waiting is pinged again every nagEvery — one banner is
+    // easy to miss, and a session can sit on a prompt for an hour saying nothing.
+    func fireNotifications(_ rows: [[String: Any]], now: Double = Date().timeIntervalSince1970) {
         var next: [Int: String] = [:]
         for r in rows {
             guard let pid = r["pid"] as? Int, let st = r["state"] as? String else { continue }
             next[pid] = st
-            guard let prev = prevState[pid], prev != st else { continue }
+            guard let prev = prevState[pid] else { continue }   // first sight: seed only, no ping
             let name = r["name"] as? String ?? "session"
             if st == "waiting" {
+                let again = renagOn && now - (lastNag[pid] ?? 0) >= nagEvery
+                guard prev != st || again else { continue }
+                lastNag[pid] = now                  // stamped on the first ping too, so re-nag #1 is 5m later
+                let what = (r["wait"] as? String).map { " — \($0)" } ?? ""
+                let waited = (r["waitFor"] as? Int).map { " " + agoText($0) } ?? ""
                 // The custom sound stands on its own — no need to also enable notifications for it.
                 let custom = playWaitSound()        // custom file replaces the banner's own sound
                 if notifyOn {
-                    notify(title: name, text: (r["wait"] as? String).map { "needs you — \($0)" } ?? "needs you",
+                    notify(title: name, text: (prev == st ? "still waiting" + waited : "needs you") + what,
                            pid: pid, silent: custom)
                 }
-            } else if notifyOn && st == "done" && prev == "working" {
+            } else if notifyOn && prev != st && st == "done" && prev == "working" {
                 notify(title: name, text: "finished", pid: pid)
             }
         }
         prevState = next
+        lastNag = lastNag.filter { next[$0.key] == "waiting" }   // a wait that ended re-nags fresh next time
     }
     // Bundled (.app) → post via UNUserNotificationCenter so the notification is owned by us:
     // clicking it activates claudewatch (and focuses the session), not Script Editor. The raw

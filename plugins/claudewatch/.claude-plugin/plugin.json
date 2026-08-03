@@ -1,7 +1,7 @@
 {
   "name": "claudewatch",
   "description": "Auto-starts the claudewatch HUD — a floating window showing every live Claude Code session, what it's doing, and which one needs your input.",
-  "version": "1.5.2",
+  "version": "1.6.0",
   "author": { "name": "renereose" },
   "homepage": "https://github.com/renereose/claudewatch",
   "repository": "https://github.com/renereose/claudewatch",

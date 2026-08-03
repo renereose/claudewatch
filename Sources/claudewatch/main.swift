@@ -21,6 +21,15 @@ if CommandLine.arguments.contains("--dump") {
     exit(0)
 }
 
+// --serve [host:]port: the same JSON as --dump, over HTTP, so something off this Mac can read it.
+// Loopback unless a host is spelled out — the payload carries cwd paths, branches and your prompt.
+if let i = CommandLine.arguments.firstIndex(of: "--serve"), i + 1 < CommandLine.arguments.count {
+    guard let a = parseServeAddr(CommandLine.arguments[i + 1]) else {
+        FileHandle.standardError.write(Data("usage: claudewatch --serve [host:]port\n".utf8)); exit(1)
+    }
+    try serve(host: a.host, port: a.port)
+}
+
 // --selftest: assert the status mapping for every session state. No app/UI needed.
 if CommandLine.arguments.contains("--selftest") {
     let d = AppDelegate()
@@ -87,6 +96,53 @@ if CommandLine.arguments.contains("--selftest") {
     ok(AppDelegate.pluginVersion(from: ledger) == "1.10.0", "newest installed plugin scope wins")
     ok(AppDelegate.pluginVersion(from: Data("{\"plugins\":{}}".utf8)) == nil, "plugin not installed → nil")
     ok(AppDelegate.pluginVersion(from: Data("not json".utf8)) == nil, "unreadable ledger → nil, no crash")
+
+    // Hotkey cycling: round-robin over the sessions that need you, wrapping, ignoring the rest.
+    func w(_ pid: Int) -> [String: Any] { ["state": "waiting", "pid": pid] }
+    let busy: [String: Any] = ["state": "working", "pid": 99]
+    ok(AppDelegate.nextWaiting([], after: 0) == nil, "nothing at all → no jump target")
+    ok(AppDelegate.nextWaiting([busy, ["state": "done", "pid": 98]], after: 0) == nil, "nothing waiting → no jump target")
+    ok(AppDelegate.nextWaiting([w(1)], after: 0)?["pid"] as? Int == 1, "first press → first waiting session")
+    ok(AppDelegate.nextWaiting([w(1)], after: 1)?["pid"] as? Int == 1, "one waiting session → keeps landing on it")
+    ok(AppDelegate.nextWaiting([w(1), busy, w(2)], after: 1)?["pid"] as? Int == 2, "cycles past non-waiting rows")
+    ok(AppDelegate.nextWaiting([w(1), w(2)], after: 2)?["pid"] as? Int == 1, "last waiting session wraps to the first")
+    ok(AppDelegate.nextWaiting([w(1), w(2)], after: 77)?["pid"] as? Int == 1, "pid that finished → start over at the top")
+
+    // Elapsed-time text, shared by the wait suffix and the re-nag body.
+    ok(agoText(45) == "45s" && agoText(180) == "3m" && agoText(7200) == "2h", "agoText: 45s / 3m / 2h")
+
+    // Re-nag: silent while off; once per nagEvery while on; the initial ping is stamped too, so
+    // the first repeat lands a full interval later rather than on the next 2s refresh.
+    let d2 = AppDelegate()
+    d2.prevState = [7: "working"]                       // already seen, so the flip below is a transition
+    let waitRows: [[String: Any]] = [["state": "waiting", "pid": 7, "name": "x", "wait": "plan review"]]
+    d2.fireNotifications(waitRows, now: 1000)           // flips working → waiting: pings, stamps
+    ok(d2.lastNag[7] == 1000, "entering waiting stamps the nag clock")
+    d2.renagOn = false
+    d2.fireNotifications(waitRows, now: 9999)
+    ok(d2.lastNag[7] == 1000, "re-nag off → still waiting never re-pings")
+    d2.renagOn = true
+    d2.fireNotifications(waitRows, now: 1000 + d2.nagEvery - 1)
+    ok(d2.lastNag[7] == 1000, "re-nag on but not due yet → no re-ping")
+    d2.fireNotifications(waitRows, now: 1000 + d2.nagEvery)
+    ok(d2.lastNag[7] == 1000 + d2.nagEvery, "re-nag on and due → re-pings and re-stamps")
+    d2.fireNotifications([["state": "working", "pid": 7]], now: 2000)
+    ok(d2.lastNag[7] == nil, "wait ended → nag clock cleared, next wait pings fresh")
+
+    // --serve response framing. Body length must match the header or clients hang on a short read.
+    let body = Data("[{\"a\":1}]".utf8)
+    let resp = String(data: httpResponse(body), encoding: .utf8)!
+    ok(resp.hasPrefix("HTTP/1.1 200 OK\r\n"), "serve: status line")
+    ok(resp.contains("Content-Length: \(body.count)\r\n"), "serve: Content-Length matches the body")
+    ok(resp.hasSuffix("\r\n\r\n[{\"a\":1}]"), "serve: blank line then the body verbatim")
+
+    // Bind address is a trust boundary: a bare port must never reach past loopback.
+    ok(parseServeAddr("8787")?.host == "127.0.0.1", "bare port → loopback only")
+    ok(parseServeAddr("8787")?.port == 8787, "bare port → that port")
+    ok(parseServeAddr("0.0.0.0:8787")?.host == "0.0.0.0", "LAN exposure has to be spelled out")
+    ok(parseServeAddr("[::1]:8787")?.host == "::1", "bracketed IPv6 literal unwraps")
+    ok(parseServeAddr("nope") == nil, "non-numeric port → rejected")
+    ok(parseServeAddr(":8787") == nil, "empty host → rejected")
 
     print("selftest passed"); exit(0)
 }

@@ -58,6 +58,7 @@ let HTML = """
  .res b{color:#8a93a3;font-weight:700}
  .t{color:#9ca3af;font-size:11px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
  .a{color:#5f6672;font-size:10px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .p{color:#78808d;font-size:10px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
  .ag{font-size:11px;margin-top:3px;display:flex;gap:7px;align-items:baseline}
  .ag .m{flex:none}
  .ag .ty{flex:none;width:104px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -104,8 +105,11 @@ let HTML = """
  <label class=row><input type=checkbox data-k=statStack><span class=k>stack cpu / ram beside the label (menu bar)</span></label>
  <label class=row><span class=k>menu-bar label</span><input id=slabel type=text placeholder="{n} worker{s}" style="flex:1;min-width:0;background:rgba(255,255,255,.08);border:0;border-radius:5px;color:inherit;padding:3px 6px;font:inherit"></label>
  <label class=row><input type=checkbox data-k=showCtx><span class=k>show context usage</span></label>
+ <label class=row><input type=checkbox data-k=showPrompt><span class=k>show your last prompt</span></label>
  <label class=row><input type=checkbox data-k=menuBar><span class=k>show menu-bar widget</span></label>
+ <label class=row><input type=checkbox data-k=hotkey><span class=k>⌃⌥⌘J jumps to the next session needing you</span></label>
  <label class=row><input type=checkbox data-k=notify><span class=k>notify on finish / input needed</span></label>
+ <label class=row><input type=checkbox data-k=renag><span class=k>re-notify every 5 min while waiting</span></label>
  <label class=row><input type=checkbox data-k=sound><span class=k>notification sound</span></label>
  <label class=row><input type=checkbox data-k=upd><span class=k>check github for updates</span></label>
  <div class=row><span class=k>sound when input needed</span><button id=snd class=pick>choose…</button><button id=sndx class=pick>✕</button></div>
@@ -113,7 +117,11 @@ let HTML = """
 <div id=x></div><script>
  var MODE='list',LAST=[],PW=0,UPD='',UPDAPP=0,UPDPLUG=0,POP=0;   // UPD: newer release found by Swift (empty = up to
  // date). POP: we auto-expanded the bubble ourselves, so snap back once nothing needs you.
- var S={op:1,autoExpand:1,hideIdle:0,onTop:1,compact:0,showUsage:1,showCtx:1,menuBar:1,notify:0,sound:0,statStack:1,upd:1,slabel:'',soundFile:''};   // user settings (persisted via Swift)
+ // Defaults live here once — S starts from them and setCfg re-bases onto them, so a pref added
+ // in a new version appears for users whose saved blob predates it.
+ var DEF={op:1,autoExpand:1,hideIdle:0,onTop:1,compact:0,showUsage:1,showCtx:1,showPrompt:1,
+          menuBar:1,hotkey:1,notify:0,renag:0,sound:0,statStack:1,upd:1,slabel:'',soundFile:''};
+ var S=Object.assign({},DEF);   // user settings (persisted via Swift)
  function ago(s){return s<60?s+'s':s<3600?(s/60|0)+'m':(s/3600|0)+'h'}
  function esc(t){let d=document.createElement('div');d.textContent=t||'';return d.innerHTML}
  function focusit(el){try{window.webkit.messageHandlers.focus.postMessage({tty:el.dataset.t,cwd:el.dataset.c,pid:+el.dataset.p})}catch(e){}}
@@ -140,7 +148,7 @@ let HTML = """
    document.getElementById('slabel').value=S.slabel||'';
    var f=S.soundFile||'';document.getElementById('snd').textContent=f?f.split('/').pop():'choose…';
    document.getElementById('snd').title=f;document.getElementById('sndx').style.display=f?'':'none'}
- function setCfg(m,pref){MODE=m;if(pref)S=Object.assign({op:1,autoExpand:1,hideIdle:0,onTop:1,compact:0,showUsage:1,showCtx:1,menuBar:1,notify:0,sound:0,statStack:1,upd:1,slabel:'',soundFile:''},pref);
+ function setCfg(m,pref){MODE=m;if(pref)S=Object.assign({},DEF,pref);
    document.body.className='m-'+m;syncUI();render(LAST)}
  function setMode(m,temp){if(!temp)POP=0;setCfg(m,S);post(temp)}
  // status marker, shared by list + bubble
@@ -150,6 +158,9 @@ let HTML = """
           r.state=='working'?'<span class="dot live"></span>':'<span class=dot></span>'}
  function shModel(m){return (m||'').replace(/^claude-/,'').replace(/-\\d{6,}$/,'').replace('[1m]','')}
  function ktok(n){return n>=1000?(n/1000).toFixed(n<10000?1:0)+'K':n}   // 117094 -> 117K, 5300 -> 5.3K
+ // No % of limit here on purpose: the transcript records the plain model name ("claude-opus-5"),
+ // never the [1m] tier marker, and a session that switched with /model isn't written down anywhere
+ // — so the denominator is a guess. 117K is honest; "58%" on a 1M session (really 12%) is not.
 
  function pmClass(p){return p=='plan'?'plan':(p=='acceptEdits'||p=='auto')?'auto':p=='bypassPermissions'?'bypass':''}
  function pmLabel(p){return p=='acceptEdits'?'auto-accept':p=='bypassPermissions'?'bypass':p=='default'?'default':p}
@@ -164,8 +175,10 @@ let HTML = """
      (r.host?'<span class="host'+(['terminal','iterm','warp'].indexOf(r.host)<0?' ide':'')+'">'+esc(r.host)+'</span>':'')+
      (r.branch?'<span class=br>'+esc(r.branch)+'</span>':'')+
      '<span class=ago>'+ago(r.ago)+'</span></div>'+
-     (r.state=='waiting'?'<div class=w>▸ needs you · '+esc(r.wait||'input')+'</div>':'')+
+     (r.state=='waiting'?'<div class=w>▸ needs you · '+esc(r.wait||'input')+
+       (r.waitFor?' · '+ago(r.waitFor):'')+'</div>':'')+
      (r.title?'<div class=t>'+esc(r.title)+'</div>':'')+
+     (!S.compact&&S.showPrompt&&r.prompt?'<div class=p>› '+esc(r.prompt)+'</div>':'')+
      (!S.compact&&r.activity?'<div class=a>'+esc(r.activity)+'</div>':'')+
      ((mdl||pm||right.length)?'<div class=meta>'+
        (mdl?'<span class=mdl>'+esc(mdl)+'</span>':'')+

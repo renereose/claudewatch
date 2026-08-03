@@ -6,6 +6,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-08-03
+
+### Added
+- **Global hotkey — <kbd>⌃⌥⌘J</kbd> jumps to the next session that needs you.** Press it from any
+  app to focus that session's terminal tab or editor window; press again to cycle through the
+  rest. With nothing waiting it surfaces the HUD, so the key never does nothing. Uses a Carbon
+  hotkey, so it needs no Accessibility permission. Switch off in Settings.
+- **Cards show your last prompt.** Claude Code already records it; the HUD now renders it, so you
+  can tell what a session is working on without switching to it. Toggle in Settings, and it
+  follows compact mode.
+- **Sessions are named properly.** Cards (and the menu-bar dropdown) now use Claude Code's own
+  session name instead of the working directory's basename, so two sessions in the same repo are
+  finally told apart. Falls back to the old basename when there's no name.
+- **"Needs you" says how long.** The banner now reads `▸ needs you · plan review · 4m`, so the
+  session that has been blocked longest is obvious at a glance.
+- **Re-notify while waiting.** Optionally pings again every 5 minutes for as long as a session is
+  still waiting — one missed banner used to cost you an hour. Off by default.
+- **`claudewatch --serve [host:]port`** — the same JSON as `--dump`, over HTTP, scanned fresh per
+  request, for a desk display, a phone, or a Stream Deck. A bare port binds loopback only; the
+  payload carries your working directories, branches and prompts, so reaching it from the network
+  has to be spelled out as `--serve 0.0.0.0:8787`. There is no authentication.
+
+### Notes
+- Context usage still shows raw tokens (`117K`) rather than a percentage of the limit. The
+  transcript records only the plain model name, never the `[1m]` tier marker, and a session that
+  switched models with `/model` isn't written down anywhere — so the denominator would be a guess,
+  and "58%" on a 1M-context session that is really at 12% would be worse than no number at all.
+
 ## [1.5.2] - 2026-07-31
 
 ### Added
@@ -159,7 +187,8 @@ First public release.
 - Settings: opacity, pop-open-when-input-needed, hide idle sessions, float-above-all,
   compact view. Window position and preferences persist across launches.
 
-[Unreleased]: https://github.com/renereose/claudewatch/compare/v1.5.2...HEAD
+[Unreleased]: https://github.com/renereose/claudewatch/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/renereose/claudewatch/compare/v1.5.2...v1.6.0
 [1.5.2]: https://github.com/renereose/claudewatch/compare/v1.5.1...v1.5.2
 [1.5.1]: https://github.com/renereose/claudewatch/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/renereose/claudewatch/compare/v1.4.0...v1.5.0

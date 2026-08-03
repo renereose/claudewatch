@@ -37,7 +37,12 @@ logs (`~/.claude/**`) directly and links only against system frameworks.
 - **Live status per session** — working · waiting-for-input · done · interrupted, updated every 2s.
 - **"Needs you" alerts** — surfaces the exact wait reason (`input needed`, `dialog open`,
   permission prompts, plan review, open questions, …) straight from Claude Code's session state,
-  and floats those sessions to the top.
+  plus how long it's been waiting, and floats those sessions to the top.
+- **Global hotkey** — <kbd>⌃⌥⌘J</kbd> from any app jumps straight to the next session that needs
+  you; press again to cycle through the rest. With nothing waiting it surfaces the HUD. No
+  Accessibility permission needed. Switch off in Settings.
+- **Your last prompt** — each card shows the prompt that session is working on, so two sessions in
+  the same repo are told apart at a glance (they also carry Claude Code's own session names).
 - **Model & permission mode** — see which model each session runs and whether it's in
   `default`, `plan`, `auto-accept`, or `bypass` mode (color-coded).
 - **Sub-agent tracking** — running vs. finished agents, including background agents.
@@ -47,7 +52,10 @@ logs (`~/.claude/**`) directly and links only against system frameworks.
   set your own label template (`{n} worker{s}`).
 - **Resource usage** — optional CPU %, memory, and context-token size (`117K`) per session.
 - **Notifications** — optional ping when a session finishes or needs input (sound optional),
-  or your own audio file played whenever a session needs you.
+  or your own audio file played whenever a session needs you. Optionally re-notifies every 5
+  minutes while a session is still waiting, so a missed banner doesn't cost you an hour.
+- **Read it from anywhere** — `claudewatch --serve 8787` exposes the same JSON over HTTP for a
+  desk display, a phone, or a Stream Deck. See [Serving the state](#serving-the-state).
 - **Self-updating** — checks GitHub for a newer release, shows a notice, and (after asking)
   downloads it, replaces itself and restarts. Switch off in Settings.
 - **Two modes** — a full **list** or a compact **bubble** you can tuck into a corner.
@@ -74,8 +82,8 @@ logs (`~/.claude/**`) directly and links only against system frameworks.
 - **Multi-config aware** — automatically picks up every `~/.claude*` config dir
   (e.g. `CLAUDE_CONFIG_DIR` aliases).
 - **Settings** — opacity, "pop open when input needed", hide idle sessions, float-above-all,
-  compact view, CPU/RAM and context toggles, menu-bar widget + label, notifications,
-  custom "needs you" sound.
+  compact view, CPU/RAM · context · last-prompt toggles, menu-bar widget + label, the jump
+  hotkey, notifications and re-notify, custom "needs you" sound.
   Remembers its position and preferences.
 
 ## Install
@@ -138,8 +146,10 @@ A locally built app isn't quarantined, so it opens without the Gatekeeper prompt
 ### Run from source
 
 ```sh
-swift run claudewatch          # GUI, floating window
-swift run claudewatch --dump   # print scanned sessions as JSON and exit
+swift run claudewatch              # GUI, floating window
+swift run claudewatch --dump       # print scanned sessions as JSON and exit
+swift run claudewatch --serve 8787 # same JSON over HTTP (loopback)
+swift run claudewatch --selftest   # run the assertions
 ```
 
 ## Build
@@ -159,11 +169,31 @@ Sources/claudewatch/
   Scanner.swift       # discover live sessions + assemble rows (scan)
   WebUI.swift         # the embedded HTML/CSS/JS UI
   DragView.swift      # native drag handle for the borderless panel
+  Hotkey.swift        # global ⌃⌥⌘J jump-to-next-waiting chord
+  Serve.swift         # --serve: the scan as a read-only HTTP endpoint
   AppDelegate.swift   # window, JS bridge, refresh loop
-  main.swift          # entry point (--dump + bootstrap)
+  main.swift          # entry point (--dump / --serve / --selftest + bootstrap)
 Package.swift         # Swift package manifest
 build.sh              # packages the .app bundle + zip
 ```
+
+## Serving the state
+
+`--serve` prints the same payload as `--dump`, over HTTP, scanned fresh per request — enough for
+an ESP32 desk display, a phone on the couch, or a Stream Deck to show what needs you.
+
+```sh
+claudewatch --serve 8787            # http://127.0.0.1:8787 — this Mac only
+claudewatch --serve 0.0.0.0:8787    # reachable from your LAN
+curl -s localhost:8787 | jq .
+```
+
+**A bare port binds loopback only, on purpose.** The payload carries your working directory paths,
+git branches and your last prompt — reaching it from the network is something you have to spell
+out. Don't do it on a network you don't trust; there's no authentication.
+
+It runs headless and independently of the HUD, so it fits a LaunchAgent. There is no setting for
+it — the HUD itself never listens on a port.
 
 ## How it works
 

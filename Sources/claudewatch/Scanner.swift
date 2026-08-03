@@ -24,22 +24,34 @@ func ttyOf(_ pid: Int32) -> String {
     return (s.isEmpty || s == "??") ? "" : "/dev/" + s
 }
 
+// A live session as its status file describes it. `name` is Claude Code's own session name
+// (cwd-derived plus a disambiguator, so two sessions in one repo differ); `statusAt` is when
+// `status` last changed, in epoch ms — for a waiting session, when the wait began. Both are
+// absent on older Claude Code builds, hence the empty/zero defaults.
+struct Live {
+    let tty: String, status: String, wait: String, name: String
+    let pid: Int32
+    let statusAt: Double
+}
+
 // Only sessions with a running claude process. <base>/sessions/<pid>.json holds
-// {pid, sessionId, cwd, status, waitingFor}; stale files linger after a crash so we verify
-// the pid. status ∈ idle|busy|shell|waiting; waitingFor names what a "waiting" session wants
-// (e.g. "input needed", "dialog open", a permission label) — authoritative, so we skip the
-// transcript for it. -> sid:(tty, status, wait)
-func liveSessions(_ base: URL) -> [String: (tty: String, status: String, wait: String, pid: Int32)] {
+// {pid, sessionId, cwd, status, waitingFor, name, statusUpdatedAt}; stale files linger after a
+// crash so we verify the pid. status ∈ idle|busy|shell|waiting; waitingFor names what a "waiting"
+// session wants (e.g. "input needed", "dialog open", a permission label) — authoritative, so we
+// skip the transcript for it.
+func liveSessions(_ base: URL) -> [String: Live] {
     let fm = FileManager.default
     let dir = base.appendingPathComponent("sessions")
-    var live: [String: (tty: String, status: String, wait: String, pid: Int32)] = [:]
+    var live: [String: Live] = [:]
     guard let files = try? fm.contentsOfDirectory(atPath: dir.path) else { return live }
     for f in files where f.hasSuffix(".json") {
         guard let d = try? Data(contentsOf: dir.appendingPathComponent(f)),
               let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any],
               let pid = j["pid"] as? Int32, let sid = j["sessionId"] as? String else { continue }
         if kill(pid, 0) == 0 {                            // process still alive
-            live[sid] = (ttyOf(pid), j["status"] as? String ?? "", j["waitingFor"] as? String ?? "", pid)
+            live[sid] = Live(tty: ttyOf(pid), status: j["status"] as? String ?? "",
+                             wait: j["waitingFor"] as? String ?? "", name: j["name"] as? String ?? "",
+                             pid: pid, statusAt: (j["statusUpdatedAt"] as? NSNumber)?.doubleValue ?? 0)
         }
     }
     return live
@@ -213,9 +225,11 @@ func scan() -> [[String: Any]] {
                 return a
             }
             row["agents"] = allAgents.filter { !($0["done"] as? Bool ?? false) }   // live agents only
-            let name = (row["cwd"] as? String).flatMap { $0.isEmpty ? nil : ($0 as NSString).lastPathComponent }
-                       ?? proj
-            row["name"] = name
+            // Claude Code's own session name when it has one — it disambiguates two sessions in the
+            // same repo, which a bare cwd basename can't.
+            row["name"] = s.name.isEmpty
+                ? ((row["cwd"] as? String).flatMap { $0.isEmpty ? nil : ($0 as NSString).lastPathComponent } ?? proj)
+                : s.name
             row["tty"] = s.tty
             row["pid"] = Int(s.pid)                       // for IDE-hosted sessions (no tty): focus by pid+cwd
             row["host"] = hostBadge(tty: s.tty, pid: s.pid)   // card badge: cursor/code/warp/iterm/…
@@ -227,7 +241,11 @@ func scan() -> [[String: Any]] {
             // see is a bg agent still running in the background — that keeps the card working on idle.
             let bgActive = (row["agents"] as? [[String: Any]] ?? []).contains { $0["bg"] as? Bool ?? false }
             switch s.status {
-            case "waiting":       row["state"] = "waiting"; row["wait"] = s.wait
+            // statusUpdatedAt is stamped when the status changes, so for a waiting session it *is*
+            // when the wait began — "needs you · 4m" is what decides which card you click first.
+            case "waiting":
+                row["state"] = "waiting"; row["wait"] = s.wait
+                if s.statusAt > 0 { row["waitFor"] = max(0, Int(now - s.statusAt / 1000)) }
             case "busy", "shell": row["state"] = "working"
             case "idle":          if !bgActive && (row["state"] as? String) != "interrupted" { row["state"] = "done" }
             default:              if bgActive { row["state"] = "working" }   // unknown status: trust bg activity
