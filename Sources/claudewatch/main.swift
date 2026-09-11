@@ -144,6 +144,19 @@ if CommandLine.arguments.contains("--selftest") {
     ok(parseServeAddr("nope") == nil, "non-numeric port → rejected")
     ok(parseServeAddr(":8787") == nil, "empty host → rejected")
 
+    // Status-line rate-limit parsing: pull the 5h/7d windows out of Claude Code's hook JSON, and
+    // never fabricate a cache from a payload that has no windows yet (else the bar would clobber a
+    // real number with nothing between API calls). Parse via JSON so number types match production.
+    func slJSON(_ s: String) -> [String: Any] { (try? JSONSerialization.jsonObject(with: Data(s.utf8))) as? [String: Any] ?? [:] }
+    let sl = usageFromStatusline(slJSON("""
+    {"rate_limits":{"five_hour":{"used_percentage":23.5,"resets_at":1738425600},
+                    "seven_day":{"used_percentage":41.2,"resets_at":1738857600}}}
+    """))
+    ok((sl?["fivePct"] as? NSNumber)?.doubleValue == 23.5, "statusline: five_hour used_percentage parsed")
+    ok((sl?["fiveReset"] as? NSNumber)?.intValue == 1738425600, "statusline: five_hour resets_at parsed")
+    ok((sl?["sevenPct"] as? NSNumber)?.doubleValue == 41.2, "statusline: seven_day used_percentage parsed")
+    ok(usageFromStatusline(slJSON("{\"model\":{\"display_name\":\"Opus\"}}")) == nil, "statusline: no rate_limits → nil, don't clobber cache")
+
     print("selftest passed"); exit(0)
 }
 
@@ -154,6 +167,12 @@ if let i = CommandLine.arguments.firstIndex(of: "--selftest-update"), i + 1 < Co
     do { try AppDelegate.downloadAndReplace(app: app); print("replaced \(app.path)"); exit(0) }
     catch { FileHandle.standardError.write("update failed: \(error.localizedDescription)\n".data(using: .utf8)!); exit(1) }
 }
+
+// --statusline: run as Claude Code's status line. Reads the session JSON on stdin, caches the
+// subscription rate-limit windows Claude Code hands its hooks (Pro/Max only), and prints a compact
+// line so it doubles as a drop-in status line. This is the *only* sanctioned local source for the
+// 5-hour "session window" usage — the OAuth usage endpoint is off-limits to third-party tools.
+if CommandLine.arguments.contains("--statusline") { writeStatusline(); exit(0) }
 
 // --html: print the runtime UI document (for offline/browser UI testing).
 if CommandLine.arguments.contains("--html") { print(HTML); exit(0) }

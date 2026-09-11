@@ -193,6 +193,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
     var prefJSON = UserDefaults.standard.string(forKey: "cw.pref") ?? "{}"
     var opacity = 1.0
     var showUsage = true                            // gates cpu/mem in the menu-bar title
+    var showSession = false                         // gates the 5h subscription window usage bar (needs statusline setup)
     var notifyOn = false                            // fire a system notification on state changes (off by default)
     var soundOn = false                             // play a sound with notifications
     var soundFile = ""                              // custom audio played when a session needs you
@@ -212,10 +213,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
     var hotkeyOn = true                             // ⌃⌥⌘J jumps to the next session needing you
     var lastJumped = 0                              // pid the hotkey landed on last, to cycle from
 
-    func applyPref(_ p: [String: Any]) {            // native side-effects of settings
+    // userInitiated: the change came from a settings toggle (not restoring saved prefs at launch),
+    // so flipping the session bar on can pop the one-time setup — without nagging on every startup.
+    func applyPref(_ p: [String: Any], userInitiated: Bool = false) {   // native side-effects of settings
+        let wasSession = showSession
         if let op = (p["op"] as? NSNumber)?.doubleValue { opacity = max(0.2, min(1, op)) }
         panel?.level = ((p["onTop"] as? NSNumber)?.boolValue ?? true) ? .floating : .normal
         showUsage = (p["showUsage"] as? NSNumber)?.boolValue ?? true
+        showSession = (p["showSession"] as? NSNumber)?.boolValue ?? false
         notifyOn = (p["notify"] as? NSNumber)?.boolValue ?? false
         if notifyOn { requestNotifyAuth() }         // ask only once the user actually enables notifications
         soundOn = (p["sound"] as? NSNumber)?.boolValue ?? false
@@ -229,6 +234,74 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
         statusStack = (p["statStack"] as? NSNumber)?.boolValue ?? true
         setMenuBar((p["menuBar"] as? NSNumber)?.boolValue ?? true)
         setStatus(lastRows)                         // repaint the title immediately on toggle
+        pushUsage()                                 // show/hide the session usage bar on toggle
+        if userInitiated, showSession, !wasSession { showUsageSetup() }   // enabled just now → guide setup
+    }
+    // Push the cached 5h subscription window into the HUD (or clear it when the toggle is off /
+    // no status line has fed us anything yet). Fed by --statusline; see writeStatusline().
+    func pushUsage() {
+        guard web != nil else { return }
+        if showSession, let u = sessionUsage(),
+           let d = try? JSONSerialization.data(withJSONObject: u),
+           let s = String(data: d, encoding: .utf8) {
+            web.evaluateJavaScript("setUsage(\(s))")
+        } else {
+            web.evaluateJavaScript("setUsage(null)")
+        }
+    }
+    // The one-time setup for the usage bar: point Claude Code's status line at us so it feeds us the
+    // rate-limit windows. Offers to install it into settings.json, or hands over the command.
+    @objc func showUsageSetup() {
+        let cmd = "\(Bundle.main.executablePath ?? "claudewatch") --statusline"
+        let a = NSAlert()
+        a.messageText = "Session usage — one-time setup"
+        a.informativeText = """
+        claudewatch reads your live 5-hour window from Claude Code's status line — there's no login. Let it install the hook, or set it up by hand.
+
+        "Install" adds this to ~/.claude/settings.json (it won't touch a status line you already have):
+          "statusLine": { "type": "command", "command": "\(cmd)" }
+
+        Then send a message in any Pro/Max Claude Code session — the bar fills once Claude Code makes its first request.
+        """
+        a.addButton(withTitle: "Install for me")
+        a.addButton(withTitle: "Copy command")
+        a.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        switch a.runModal() {
+        case .alertFirstButtonReturn: installStatusline(cmd)
+        case .alertSecondButtonReturn:
+            NSPasteboard.general.clearContents(); NSPasteboard.general.setString(cmd, forType: .string)
+        default: break
+        }
+    }
+    // Write the statusLine hook into ~/.claude/settings.json, preserving other keys. Never clobbers
+    // an existing status line the user set — hands over the command to add by hand in that case.
+    func installStatusline(_ cmd: String) {
+        func info(_ title: String, _ msg: String) {
+            let a = NSAlert(); a.messageText = title; a.informativeText = msg; a.addButton(withTitle: "OK")
+            NSApp.activate(ignoringOtherApps: true); a.runModal()
+        }
+        let settings = HOME.appendingPathComponent(".claude/settings.json")
+        var obj: [String: Any] = [:]
+        if let d = try? Data(contentsOf: settings),
+           let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] { obj = j }
+        if let sl = obj["statusLine"] as? [String: Any], let existing = sl["command"] as? String {
+            if existing.contains("claudewatch") {
+                return info("Already set up", "Your status line already points at claudewatch. Send a message in a Pro/Max Claude Code session and the bar fills in.")
+            }
+            NSPasteboard.general.clearContents(); NSPasteboard.general.setString(cmd, forType: .string)
+            return info("You already have a status line", "Left it untouched. The command is on your clipboard — add it to your own status-line script (pipe the same stdin through it), or replace your command with it.")
+        }
+        obj["statusLine"] = ["type": "command", "command": cmd]
+        do {
+            try FileManager.default.createDirectory(at: settings.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let out = try JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys])
+            try out.write(to: settings)
+            info("Installed", "Added a status line to ~/.claude/settings.json. Send a message in a Pro/Max Claude Code session — the 5-hour bar fills once Claude Code makes its first request.")
+        } catch {
+            NSPasteboard.general.clearContents(); NSPasteboard.general.setString(cmd, forType: .string)
+            info("Couldn't write settings", "\(error.localizedDescription)\n\nThe command is on your clipboard — add it to ~/.claude/settings.json by hand under \"statusLine\".")
+        }
     }
     // Create/remove the menu-bar item on demand. Off = no status item; the floating panel still
     // shows everything and closing it (red button) still quits, so access isn't lost.
@@ -264,6 +337,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
            let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] {
             if j["quit"] != nil { NSApp.terminate(nil); return }
             if j["pickSound"] != nil { pickSound(); return }
+            if j["setupUsage"] != nil { showUsageSetup(); return }
             if j["update"] != nil { promptUpdate(); return }
             if let f = (j["fit"] as? NSNumber)?.doubleValue { contentH = CGFloat(max(44, min(680, f))) }
             // Draggable bar gaps (list mode), in CSS px top-left → flip to view coords.
@@ -289,7 +363,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
                 listFallbackGrip()
             }
             if let pref = j["pref"] as? [String: Any] {
-                applyPref(pref)
+                applyPref(pref, userInitiated: true)
                 if let pd = try? JSONSerialization.data(withJSONObject: pref),
                    let ps = String(data: pd, encoding: .utf8) {
                     prefJSON = ps; UserDefaults.standard.set(ps, forKey: "cw.pref")
@@ -619,6 +693,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
         guard let data = try? JSONSerialization.data(withJSONObject: rows),
               let json = String(data: data, encoding: .utf8) else { return }
         web.evaluateJavaScript("render(\(json))")
+        pushUsage()
     }
     func windowWillClose(_ n: Notification) { NSApp.terminate(nil) }   // red button quits
 }

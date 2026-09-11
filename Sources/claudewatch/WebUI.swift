@@ -72,6 +72,18 @@ let HTML = """
  .upd{background:#1e2b26;border:1px solid #2f6f4f;color:#7fc8a0;border-radius:8px;cursor:pointer;
     font-size:11px;padding:5px 8px;margin-bottom:6px;text-align:center}
  .upd:hover{background:#24352e}
+ /* session (5h) subscription window usage bar */
+ .ub{background:#1a1d23;border:1px solid #2a2e37;border-radius:8px;padding:6px 9px;margin-bottom:6px;font-size:10px;color:#9ca3af}
+ .ub.stale{opacity:.55}
+ .ubl{display:flex;justify-content:space-between;gap:6px;margin-bottom:4px}
+ .ubl .r{color:#6b7280}
+ .ubar{height:5px;background:#2a2e37;border-radius:3px;overflow:hidden}
+ .ufill{height:100%;background:#34d399;border-radius:3px;transition:width .3s}
+ .ufill.u-warn{background:#f0b866}
+ .ufill.u-hot{background:#e08b8b}
+ .ub.setup{cursor:pointer;text-align:center;color:#7f8794}
+ .ub.setup:hover{color:#d5d8de}
+ .ulink{color:#7fc8a0;text-decoration:underline}
  /* bubble = compact one-line-per-session summary */
  .bwrap{background:#1e2127;border:1px solid #2a2e37;border-radius:12px;padding:6px 9px;
     display:flex;flex-direction:column;gap:2px}
@@ -102,6 +114,7 @@ let HTML = """
  <label class=row><input type=checkbox data-k=onTop><span class=k>float above all windows</span></label>
  <label class=row><input type=checkbox data-k=compact><span class=k>compact (hide activity & agents)</span></label>
  <label class=row><input type=checkbox data-k=showUsage><span class=k>show cpu / memory usage</span></label>
+ <label class=row><input type=checkbox data-k=showSession><span class=k>session (5h) window usage bar</span></label>
  <label class=row><input type=checkbox data-k=statStack><span class=k>stack cpu / ram beside the label (menu bar)</span></label>
  <label class=row><span class=k>menu-bar label</span><input id=slabel type=text placeholder="{n} worker{s}" style="flex:1;min-width:0;background:rgba(255,255,255,.08);border:0;border-radius:5px;color:inherit;padding:3px 6px;font:inherit"></label>
  <label class=row><input type=checkbox data-k=showCtx><span class=k>show context usage</span></label>
@@ -115,12 +128,12 @@ let HTML = """
  <div class=row><span class=k>sound when input needed</span><button id=snd class=pick>choose…</button><button id=sndx class=pick>✕</button></div>
 </div>
 <div id=x></div><script>
- var MODE='list',LAST=[],PW=0,UPD='',UPDAPP=0,UPDPLUG=0,POP=0;   // UPD: newer release found by Swift (empty = up to
+ var MODE='list',LAST=[],PW=0,UPD='',UPDAPP=0,UPDPLUG=0,POP=0,USG=null;   // UPD: newer release found by Swift (empty = up to
  // date). POP: we auto-expanded the bubble ourselves, so snap back once nothing needs you.
  // Defaults live here once — S starts from them and setCfg re-bases onto them, so a pref added
  // in a new version appears for users whose saved blob predates it.
  var DEF={op:1,autoExpand:1,hideIdle:0,onTop:1,compact:0,showUsage:1,showCtx:1,showPrompt:1,
-          menuBar:1,hotkey:1,notify:0,renag:0,sound:0,statStack:1,upd:1,slabel:'',soundFile:''};
+          menuBar:1,hotkey:1,notify:0,renag:0,sound:0,statStack:1,upd:1,showSession:0,slabel:'',soundFile:''};
  var S=Object.assign({},DEF);   // user settings (persisted via Swift)
  function ago(s){return s<60?s+'s':s<3600?(s/60|0)+'m':(s/3600|0)+'h'}
  function esc(t){let d=document.createElement('div');d.textContent=t||'';return d.innerHTML}
@@ -193,6 +206,19 @@ let HTML = """
    '<span class=bnm>'+esc(r.name)+'</span>'+
    (r.state=='waiting'?'<span class=bwt>'+esc(r.wait||'input')+'</span>':'')+
    '<span class=bag>'+ago(r.ago)+'</span></div>'}
+ // Account-wide 5h subscription window (fed by Swift from Claude Code's status line). One bar for
+ // the whole account, not per session. Off unless enabled; a prompt to set it up until data lands.
+ function usageBar(){
+   if(!S.showSession) return '';
+   if(!USG||USG.fivePct==null) return '<div class="ub setup" id=ubset>session usage · <span class=ulink>set up</span></div>';
+   var now=Date.now()/1000, reset=USG.fiveReset||0, p=Math.max(0,Math.min(100,USG.fivePct));
+   if(reset&&now>=reset) p=0;                                  // window reset since our last sample
+   var stale=now-(USG.at||now)>900;                            // >15m old: the real % may have climbed
+   var cls=p>=90?'u-hot':p>=70?'u-warn':'';
+   var right=(reset>now?'resets '+ago(reset-now):'')+(USG.sevenPct!=null?(reset>now?' · ':'')+'7d '+Math.ceil(USG.sevenPct)+'%':'');
+   // ceil to match Claude Code's own /usage rounding (73.4 shows as 74, not 73)
+   return '<div class="ub'+(stale?' stale':'')+'"><div class=ubl><span>5h '+Math.ceil(p)+'%'+(stale?' ·~':'')+
+     '</span><span class=r>'+right+'</span></div><div class=ubar><div class="ufill '+cls+'" style="width:'+p+'%"></div></div></div>'}
  function render(rows){LAST=rows||[];var x=document.getElementById('x');
    var v=S.hideIdle?LAST.filter(function(r){return r.state=='working'||r.state=='waiting'}):LAST;
    var waitN=v.filter(function(r){return r.state=='waiting'}).length;
@@ -207,17 +233,19 @@ let HTML = """
      var inner=v.length?v.slice(0,8).map(brow).join('')+
        (v.length>8?'<div class=bmore>+'+(v.length-8)+' more</div>':'')
        :'<div class=bq>all quiet</div>';
-     x.innerHTML='<div class="bwrap'+(waitN?' hot':'')+'">'+head+inner+'</div>';
+     x.innerHTML=usageBar()+'<div class="bwrap'+(waitN?' hot':'')+'">'+head+inner+'</div>';
      document.getElementById('bexp').onclick=function(e){e.stopPropagation();setMode('list')};
      fit();dragLayout();return}
-   var top=UPD?'<div class=upd id=upd>⬆ '+(UPDAPP?'v'+esc(UPD)+' available — click to update':'plugin update — v'+esc(UPD))+'</div>':'';
+   var top=usageBar()+(UPD?'<div class=upd id=upd>⬆ '+(UPDAPP?'v'+esc(UPD)+' available — click to update':'plugin update — v'+esc(UPD))+'</div>':'');
    if(!v.length){x.innerHTML=top+'<div class=empty>'+(S.hideIdle?'nothing active':'no active sessions')+'</div>';fit();dragLayout();return}
    x.innerHTML=top+v.map(card).join('');fit();dragLayout()}
  function setUpdate(v,app,plug){UPD=v;UPDAPP=app;UPDPLUG=plug;render(LAST)}   // Swift found a newer tag
+ function setUsage(u){USG=u;render(LAST)}   // Swift pushes the cached 5h window (or null to hide)
  // Focus on mousedown, delegated from the stable container: the 2s refresh replaces the cards'
  // innerHTML, so a per-card onclick is lost whenever a redraw lands between press and release.
  document.getElementById('x').addEventListener('mousedown',function(e){
    if(e.target.closest&&e.target.closest('.upd')){try{window.webkit.messageHandlers.cfg.postMessage(JSON.stringify({update:1}))}catch(_){}return}
+   if(e.target.closest&&e.target.closest('.ub.setup')){try{window.webkit.messageHandlers.cfg.postMessage(JSON.stringify({setupUsage:1}))}catch(_){}return}
    var c=e.target.closest?e.target.closest('.c,.bc'):null;if(c)focusit(c)});
  document.getElementById('gear').onclick=function(){document.getElementById('set').classList.toggle('open');fit()};
  document.getElementById('quit').onclick=function(){try{window.webkit.messageHandlers.cfg.postMessage(JSON.stringify({quit:1}))}catch(e){}};

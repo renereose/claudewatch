@@ -260,3 +260,66 @@ func scan() -> [[String: Any]] {
         return aw == bw ? (a["ago"] as! Int) < (b["ago"] as! Int) : aw
     }
 }
+
+// ── Subscription session window (5h) usage ───────────────────────────────────────────────────
+// Claude Code hands its status-line hooks a `rate_limits` object with the live 5h/7d subscription
+// windows (Pro/Max only, after the first API response). We can't fetch that ourselves — OAuth
+// usage is off-limits to third-party tools — so we run *as* a status line, cache what Claude Code
+// gives us, and read it back here. Account-wide, so one file (freshest write wins), not per-session.
+func usageCachePath() -> URL {
+    let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        ?? HOME.appendingPathComponent("Library/Application Support")
+    return base.appendingPathComponent("claudewatch/usage.json")
+}
+
+// Pull the 5h/7d windows out of a status-line stdin payload. nil when it carries no windows yet
+// (early in a session, or a non-subscription account) — the caller must then leave the cache alone
+// rather than overwrite a good reading with nothing.
+func usageFromStatusline(_ j: [String: Any]) -> [String: Any]? {
+    guard let rl = j["rate_limits"] as? [String: Any] else { return nil }
+    var out: [String: Any] = [:]
+    if let f = rl["five_hour"] as? [String: Any] {
+        out["fivePct"] = f["used_percentage"]; out["fiveReset"] = f["resets_at"]
+    }
+    if let s = rl["seven_day"] as? [String: Any] {
+        out["sevenPct"] = s["used_percentage"]; out["sevenReset"] = s["resets_at"]
+    }
+    return out.isEmpty ? nil : out
+}
+
+// The --statusline entry point: read the hook JSON, cache the windows, print a compact status line
+// so this is a valid drop-in `statusLine.command`. Prints even when there are no windows to cache.
+func writeStatusline() {
+    // Run by hand in a terminal (stdin is a TTY)? It'd block forever waiting on EOF — print how to
+    // wire it up instead. Claude Code invokes it with a pipe, so this guard never fires there.
+    if isatty(FileHandle.standardInput.fileDescriptor) != 0 {
+        print("claudewatch --statusline reads Claude Code's status-line JSON on stdin — don't run it directly.")
+        print("Put it in ~/.claude/settings.json instead:")
+        print("  \"statusLine\": { \"type\": \"command\", \"command\": \"\(CommandLine.arguments.first ?? "claudewatch") --statusline\" }")
+        return
+    }
+    let input = FileHandle.standardInput.readDataToEndOfFile()
+    let j = (try? JSONSerialization.jsonObject(with: input)) as? [String: Any] ?? [:]
+    let model = (j["model"] as? [String: Any])?["display_name"] as? String ?? "claude"
+    var line = "[\(model)]"
+    if let ctx = ((j["context_window"] as? [String: Any])?["used_percentage"] as? NSNumber)?.intValue {
+        line += " \(ctx)% ctx"
+    }
+    if var u = usageFromStatusline(j) {
+        u["at"] = Date().timeIntervalSince1970
+        if let p = (u["fivePct"] as? NSNumber)?.intValue { line += " · 5h \(p)%" }
+        if let d = try? JSONSerialization.data(withJSONObject: u) {
+            let path = usageCachePath()
+            try? FileManager.default.createDirectory(at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? d.write(to: path)
+        }
+    }
+    print(line)
+}
+
+// Last cached windows, for the HUD's usage bar. nil until a status line has fed us one.
+func sessionUsage() -> [String: Any]? {
+    guard let d = try? Data(contentsOf: usageCachePath()),
+          let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else { return nil }
+    return j
+}
