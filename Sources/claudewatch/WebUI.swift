@@ -81,6 +81,7 @@ let HTML = """
  .ufill{height:100%;background:#34d399;border-radius:3px;transition:width .3s}
  .ufill.u-warn{background:#f0b866}
  .ufill.u-hot{background:#e08b8b}
+ .bwrap .ub{margin:4px 0 0;padding:6px 0 0;background:transparent;border:0;border-top:1px solid #2a2e37;border-radius:0}   /* bubble: a divider line, then the status flush */
  .ub.setup{cursor:pointer;text-align:center;color:#7f8794}
  .ub.setup:hover{color:#d5d8de}
  .ulink{color:#7fc8a0;text-decoration:underline}
@@ -233,12 +234,12 @@ let HTML = """
      var inner=v.length?v.slice(0,8).map(brow).join('')+
        (v.length>8?'<div class=bmore>+'+(v.length-8)+' more</div>':'')
        :'<div class=bq>all quiet</div>';
-     x.innerHTML=usageBar()+'<div class="bwrap'+(waitN?' hot':'')+'">'+head+inner+'</div>';
+     x.innerHTML='<div class="bwrap'+(waitN?' hot':'')+'">'+head+inner+usageBar()+'</div>';
      document.getElementById('bexp').onclick=function(e){e.stopPropagation();setMode('list')};
      fit();dragLayout();return}
-   var top=usageBar()+(UPD?'<div class=upd id=upd>⬆ '+(UPDAPP?'v'+esc(UPD)+' available — click to update':'plugin update — v'+esc(UPD))+'</div>':'');
-   if(!v.length){x.innerHTML=top+'<div class=empty>'+(S.hideIdle?'nothing active':'no active sessions')+'</div>';fit();dragLayout();return}
-   x.innerHTML=top+v.map(card).join('');fit();dragLayout()}
+   var top=(UPD?'<div class=upd id=upd>⬆ '+(UPDAPP?'v'+esc(UPD)+' available — click to update':'plugin update — v'+esc(UPD))+'</div>':'');
+   if(!v.length){x.innerHTML=top+'<div class=empty>'+(S.hideIdle?'nothing active':'no active sessions')+'</div>'+usageBar();fit();dragLayout();return}
+   x.innerHTML=top+v.map(card).join('')+usageBar();fit();dragLayout()}
  function setUpdate(v,app,plug){UPD=v;UPDAPP=app;UPDPLUG=plug;render(LAST)}   // Swift found a newer tag
  function setUsage(u){USG=u;render(LAST)}   // Swift pushes the cached 5h window (or null to hide)
  // Focus on mousedown, delegated from the stable container: the 2s refresh replaces the cards'

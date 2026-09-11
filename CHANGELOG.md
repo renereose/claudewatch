@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-09-11
+
+### Changed
+- **Session (5h) usage bar moved to the bottom** in both list and bubble views. In bubble mode it
+  now sits inside the pill under the sessions, separated by a divider line on a transparent
+  background instead of a detached card.
+
+### Fixed
+- **Release versions now stay in sync.** The plugin/marketplace manifests were left at 1.6.0 when
+  1.7.0 shipped, so plugin users saw an update banner that never cleared. Releasing now always
+  bumps app, plugin, and marketplace together (`scripts/set-version.sh`); see `CLAUDE.md`.
+
 ## [1.6.0] - 2026-08-03
 
 ### Added
