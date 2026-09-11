@@ -51,6 +51,10 @@ logs (`~/.claude/**`) directly and links only against system frameworks.
   session (click to focus), plus optional summed CPU / RAM. Fully optional and customizable —
   set your own label template (`{n} worker{s}`).
 - **Resource usage** — optional CPU %, memory, and context-token size (`117K`) per session.
+- **Session usage (5-hour window)** — optional progress bar for how much of your Claude
+  **Pro/Max** 5-hour session limit you've used, read live from Claude Code's own status line —
+  no API call, no login. One-time setup from Settings; see
+  [Session usage](#session-usage-5-hour-window).
 - **Notifications** — optional ping when a session finishes or needs input (sound optional),
   or your own audio file played whenever a session needs you. Optionally re-notifies every 5
   minutes while a session is still waiting, so a missed banner doesn't cost you an hour.
@@ -82,8 +86,8 @@ logs (`~/.claude/**`) directly and links only against system frameworks.
 - **Multi-config aware** — automatically picks up every `~/.claude*` config dir
   (e.g. `CLAUDE_CONFIG_DIR` aliases).
 - **Settings** — opacity, "pop open when input needed", hide idle sessions, float-above-all,
-  compact view, CPU/RAM · context · last-prompt toggles, menu-bar widget + label, the jump
-  hotkey, notifications and re-notify, custom "needs you" sound.
+  compact view, CPU/RAM · context · last-prompt · session-usage toggles, menu-bar widget + label,
+  the jump hotkey, notifications and re-notify, custom "needs you" sound.
   Remembers its position and preferences.
 
 ## Install
@@ -194,6 +198,39 @@ out. Don't do it on a network you don't trust; there's no authentication.
 
 It runs headless and independently of the HUD, so it fits a LaunchAgent. There is no setting for
 it — the HUD itself never listens on a port.
+
+## Session usage (5-hour window)
+
+Claude **Pro/Max** plans meter usage in a rolling 5-hour window. claudewatch can show how much of
+it you've used as a progress bar in the HUD — but it never talks to Anthropic to get that number.
+Reading subscription usage over the API needs the Claude Code OAuth token, which Anthropic
+disallows for third-party tools and enforces server-side.
+
+Instead, claudewatch reads what Claude Code already computes locally. Claude Code (v2.1+) hands a
+`rate_limits` object to its **status line** on every render — the same 5-hour / 7-day figures its
+`/usage` command shows. claudewatch runs *as* that status line, caches the numbers, and draws the
+bar. No API call, no login; nothing leaves your machine.
+
+**Enable it:** Settings → **session (5h) window usage bar**. The first time, it offers to install
+the hook into `~/.claude/settings.json`:
+
+```json
+"statusLine": { "type": "command", "command": "/Applications/Claudewatch.app/Contents/MacOS/claudewatch --statusline" }
+```
+
+Then send a message in any Pro/Max session — the bar fills in once Claude Code makes its first
+request (the `rate_limits` field is absent for API-key billing and before the first request).
+
+**Already have a status line?** claudewatch won't overwrite it. Keep yours and feed claudewatch
+too — read stdin once in your own script and pipe it through `--statusline` (whose own output you
+can discard):
+
+```bash
+#!/bin/bash
+input=$(cat)
+printf '%s' "$input" | /Applications/Claudewatch.app/Contents/MacOS/claudewatch --statusline >/dev/null
+# … your existing status line, rendering from "$input" …
+```
 
 ## How it works
 
