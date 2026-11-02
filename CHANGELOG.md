@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-11-02
+
 ### Fixed
 - **Much lower energy impact.** The 2-second refresh re-read every busy session's whole transcript
   (10 MB+ for long sessions), re-read running background agents' transcripts in full, and forked
@@ -211,7 +213,10 @@ First public release.
 - Settings: opacity, pop-open-when-input-needed, hide idle sessions, float-above-all,
   compact view. Window position and preferences persist across launches.
 
-[Unreleased]: https://github.com/renereose/claudewatch/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/renereose/claudewatch/compare/v1.8.1...HEAD
+[1.8.1]: https://github.com/renereose/claudewatch/compare/v1.8.0...v1.8.1
+[1.8.0]: https://github.com/renereose/claudewatch/compare/v1.7.0...v1.8.0
+[1.7.0]: https://github.com/renereose/claudewatch/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/renereose/claudewatch/compare/v1.5.2...v1.6.0
 [1.5.2]: https://github.com/renereose/claudewatch/compare/v1.5.1...v1.5.2
 [1.5.1]: https://github.com/renereose/claudewatch/compare/v1.5.0...v1.5.1
