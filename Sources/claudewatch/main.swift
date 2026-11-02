@@ -157,6 +157,22 @@ if CommandLine.arguments.contains("--selftest") {
     ok((sl?["sevenPct"] as? NSNumber)?.doubleValue == 41.2, "statusline: seven_day used_percentage parsed")
     ok(usageFromStatusline(slJSON("{\"model\":{\"display_name\":\"Opus\"}}")) == nil, "statusline: no rate_limits → nil, don't clobber cache")
 
+    // Incremental transcript parsing: a file grown across ticks — cut mid-line — must read the same
+    // as parsing it whole, and a half-written line must wait rather than be dropped.
+    let tp = NSTemporaryDirectory() + "cw-parse-\(getpid()).jsonl"
+    let l1 = "{\"type\":\"ai-title\",\"aiTitle\":\"first\",\"cwd\":\"/a\"}\n"
+    let l2 = "{\"type\":\"assistant\",\"message\":{\"stop_reason\":\"end_turn\",\"content\":[{\"type\":\"text\",\"text\":\"héllo\"}]}}\n"
+    let cut = l2.utf8.count / 2
+    FileManager.default.createFile(atPath: tp, contents: Data((l1 + l2).utf8.prefix(l1.utf8.count + cut)))
+    ok(parse(tp)?["title"] as? String == "first" && parse(tp)?["state"] as? String == "idle", "parse: complete line read, half line waits")
+    let fh = FileHandle(forWritingAtPath: tp)!; fh.seekToEndOfFile(); fh.write(Data(l2.utf8.dropFirst(cut))); try? fh.close()
+    ok(parse(tp)?["state"] as? String == "done" && parse(tp)?["activity"] as? String == "héllo", "parse: appended rest picked up")
+    try? FileManager.default.removeItem(atPath: tp)
+
+    // libproc probes (replaced per-tick `ps` forks): our own pid has memory; a dead pid is all zeros.
+    ok(usageOf(getpid()).mem > 0, "usageOf: own RSS read via libproc")
+    ok(usageOf(-1).mem == 0 && ttyOf(-1) == "", "usageOf/ttyOf: missing pid → empty, no crash")
+
     print("selftest passed"); exit(0)
 }
 

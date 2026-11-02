@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Much lower energy impact.** The 2-second refresh re-read every busy session's whole transcript
+  (10 MB+ for long sessions), re-read running background agents' transcripts in full, and forked
+  two `ps` processes per session. Transcripts are now parsed incrementally (only appended lines),
+  agent transcripts are read from the tail, CPU/RAM/tty come from libproc instead of `ps`, and the
+  HUD no longer re-renders twice per tick. ~7× less CPU per refresh in testing. Per-session CPU% is
+  now measured over the refresh interval rather than `ps`'s decaying average.
+- **The HUD no longer rebuilds itself every 2 seconds.** Each refresh now patches only the text and
+  attributes that changed instead of replacing every card, and stops resizing the window when its
+  height hasn't changed. Status dots pulse three times when a session starts working or needs you,
+  then hold steady. Before, they pulsed forever, which kept the screen redrawing nonstop.
+
 ## [1.8.0] - 2026-09-11
 
 ### Changed

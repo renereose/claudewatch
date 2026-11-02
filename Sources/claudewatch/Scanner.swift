@@ -15,13 +15,12 @@ func configRoots() -> [URL] {
 }
 
 // tty device the pid is attached to, e.g. "/dev/ttys003" — how we match a Terminal tab.
+// libproc, not `ps`: this runs per session every 2s, and forking ps that often cost real battery.
 func ttyOf(_ pid: Int32) -> String {
-    let p = Process(); p.launchPath = "/bin/ps"; p.arguments = ["-o", "tty=", "-p", "\(pid)"]
-    let pipe = Pipe(); p.standardOutput = pipe; p.standardError = Pipe()
-    try? p.run(); p.waitUntilExit()
-    let s = (String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? "")
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-    return (s.isEmpty || s == "??") ? "" : "/dev/" + s
+    var bi = proc_bsdinfo()
+    guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &bi, Int32(MemoryLayout<proc_bsdinfo>.size)) > 0,
+          let name = devname(dev_t(bitPattern: bi.e_tdev), S_IFCHR) else { return "" }   // no tty → nil
+    return "/dev/" + String(cString: name)
 }
 
 // A live session as its status file describes it. `name` is Claude Code's own session name
@@ -129,17 +128,19 @@ func focusTerminal(_ tty: String) {
     try? p.run()
 }
 
-// Rough CPU%/RSS(MB) for a pid via ps. %cpu is a decaying average, not instantaneous — good
-// enough for a "how heavy is this session" glance.
-// ponytail: main claude pid only, not its child/subagent tree; sum `ps --ppid` if that matters.
+// CPU% over the interval since the last call for this pid (0 on first sight) and RSS in MB.
+// libproc, not `ps`, for the same battery reason as ttyOf.
+// ponytail: main claude pid only, not its child/subagent tree; lastCPU is unbounded like hostCache.
+var lastCPU: [Int32: (cpu: Double, at: Double)] = [:]     // pid -> (cpu ns, wall ns) at last call
+let timebase: Double = { var t = mach_timebase_info(); mach_timebase_info(&t); return Double(t.numer) / Double(t.denom) }()
 func usageOf(_ pid: Int32) -> (cpu: Double, mem: Int) {
-    let p = Process(); p.launchPath = "/bin/ps"; p.arguments = ["-o", "%cpu=,rss=", "-p", "\(pid)"]
-    let pipe = Pipe(); p.standardOutput = pipe; p.standardError = Pipe()
-    try? p.run(); p.waitUntilExit()
-    let parts = (String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? "")
-        .split(whereSeparator: \.isWhitespace)
-    guard parts.count >= 2 else { return (0, 0) }
-    return (Double(parts[0]) ?? 0, (Int(parts[1]) ?? 0) / 1024)   // rss KB -> MB
+    var ti = proc_taskinfo()
+    guard proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &ti, Int32(MemoryLayout<proc_taskinfo>.size)) > 0 else { return (0, 0) }
+    let cpu = Double(ti.pti_total_user + ti.pti_total_system) * timebase   // mach ticks → ns
+    let now = Double(DispatchTime.now().uptimeNanoseconds)
+    defer { lastCPU[pid] = (cpu, now) }
+    let pct = lastCPU[pid].map { now > $0.at ? max(0, cpu - $0.cpu) / (now - $0.at) * 100 : 0 } ?? 0
+    return (pct, Int(ti.pti_resident_size / 1_048_576))
 }
 
 // The pid's executable path — tells which IDE hosts an editor session (its binary lives under

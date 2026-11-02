@@ -239,15 +239,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
     }
     // Push the cached 5h subscription window into the HUD (or clear it when the toggle is off /
     // no status line has fed us anything yet). Fed by --statusline; see writeStatusline().
+    // Only when it changed: setUsage() re-renders the whole HUD, and refresh() already did that.
+    var lastUsageJS = ""
     func pushUsage() {
         guard web != nil else { return }
+        var js = "setUsage(null)"
         if showSession, let u = sessionUsage(),
            let d = try? JSONSerialization.data(withJSONObject: u),
-           let s = String(data: d, encoding: .utf8) {
-            web.evaluateJavaScript("setUsage(\(s))")
-        } else {
-            web.evaluateJavaScript("setUsage(null)")
-        }
+           let s = String(data: d, encoding: .utf8) { js = "setUsage(\(s))" }
+        guard js != lastUsageJS else { return }
+        lastUsageJS = js
+        web.evaluateJavaScript(js)
     }
     // The one-time setup for the usage bar: point Claude Code's status line at us so it feeds us the
     // rate-limit windows. Offers to install it into settings.json, or hands over the command.
@@ -414,6 +416,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
             UNUserNotificationCenter.current().delegate = self
         }                                                // auth is requested lazily when notifications are enabled
         Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in self.refresh() }
+            .tolerance = 0.5                 // lets macOS batch our wakeup with others (battery)
         checkUpdate()                        // and hourly, for HUDs that stay up for days
         Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { _ in self.checkUpdate() }
         Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { _ in self.restartIfReplaced() }

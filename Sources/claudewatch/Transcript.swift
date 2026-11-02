@@ -18,15 +18,27 @@ func between(_ s: String, _ a: String, _ b: String) -> String? {
 // has concluded (last assistant turn ended in end_turn) — a completion signal for fire-and-forget
 // agents whose done never reaches the main transcript. Subagent files live beside the main one in
 // <main-without-.jsonl>/subagents/; the .meta.json maps launch toolUseId -> file.
+var subagentFile: [String: String] = [:]                  // toolUseId -> its transcript (never changes)
+
 func subagentInfo(mainPath: String, toolUseId: String) -> (activity: String?, done: Bool)? {
-    let dir = String(mainPath.dropLast(6)) + "/subagents"   // strip ".jsonl"
-    let fm = FileManager.default
-    guard let files = try? fm.contentsOfDirectory(atPath: dir) else { return nil }
-    guard let meta = files.first(where: { $0.hasSuffix(".meta.json") &&
-            ((try? String(contentsOfFile: dir + "/" + $0)) ?? "").contains("\"toolUseId\":\"\(toolUseId)\"") })
-    else { return nil }
-    let jsonl = dir + "/" + meta.dropLast(10) + ".jsonl"     // strip ".meta.json", add ".jsonl"
-    guard let text = try? String(contentsOfFile: jsonl, encoding: .utf8) else { return nil }
+    let jsonl: String
+    if let known = subagentFile[toolUseId] { jsonl = known } else {
+        let dir = String(mainPath.dropLast(6)) + "/subagents"   // strip ".jsonl"
+        guard let files = try? FileManager.default.contentsOfDirectory(atPath: dir) else { return nil }
+        guard let meta = files.first(where: { $0.hasSuffix(".meta.json") &&
+                ((try? String(contentsOfFile: dir + "/" + $0)) ?? "").contains("\"toolUseId\":\"\(toolUseId)\"") })
+        else { return nil }
+        jsonl = dir + "/" + meta.dropLast(10) + ".jsonl"     // strip ".meta.json", add ".jsonl"
+        subagentFile[toolUseId] = jsonl
+    }
+    // Only the tail: the walk below stops at the last assistant turn, which sits at the end.
+    // ponytail: 256 KB window; a single trailing record bigger than that reads as "no activity yet".
+    guard let fh = FileHandle(forReadingAtPath: jsonl) else { return nil }
+    defer { try? fh.close() }
+    let size = (try? fh.seekToEnd()) ?? 0
+    try? fh.seek(toOffset: size > 262_144 ? size - 262_144 : 0)
+    var text = String(decoding: fh.readDataToEndOfFile(), as: UTF8.self)
+    if size > 262_144, let nl = text.firstIndex(of: "\n") { text = String(text[text.index(after: nl)...]) }   // drop the cut line
     var activity: String? = nil, done = false, sawAssistant = false, resumed = false
     for line in text.split(separator: "\n").reversed() {
         guard let d = line.data(using: .utf8),
@@ -52,8 +64,32 @@ func subagentInfo(mainPath: String, toolUseId: String) -> (activity: String?, do
     return (activity, done)
 }
 
+// Transcripts are append-only and a busy one grows every 2s tick. Re-reading the whole file each
+// time (10 MB+ for a long session) was claudewatch's biggest battery drain, so each file keeps its
+// parser state + byte offset and only the newly appended lines are fed in.
+var parsers: [String: TranscriptParser] = [:]
+
 func parse(_ path: String) -> [String: Any]? {
-    guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
+    guard let fh = FileHandle(forReadingAtPath: path) else { return nil }
+    defer { try? fh.close() }
+    var p = parsers[path] ?? TranscriptParser()
+    let size = (try? fh.seekToEnd()) ?? 0
+    if size < p.offset { p = TranscriptParser() }            // rewritten/truncated → start over
+    try? fh.seek(toOffset: p.offset)
+    let data = fh.readDataToEndOfFile()
+    if let end = data.lastIndex(of: 0x0A) {                  // complete lines only; a half-written
+        for line in data[..<end].split(separator: 0x0A) {    // tail waits for the next tick
+            if let row = (try? JSONSerialization.jsonObject(with: line)) as? [String: Any] { p.feed(row) }
+        }
+        p.offset += UInt64(end - data.startIndex + 1)
+    }
+    parsers[path] = p
+    return p.row
+}
+
+// One transcript's running fold. feed() takes records in file order; row is the current result.
+struct TranscriptParser {
+    var offset: UInt64 = 0                          // bytes consumed so far
     var title = "", prompt = "", cwd = "", activity = "", branch = "", state = "idle", wait = ""
     var model = "", pmode = ""                      // last model + permission mode seen
     var ctx = 0                                     // context tokens in the latest assistant turn
@@ -64,9 +100,8 @@ func parse(_ path: String) -> [String: Any]? {
     var asyncIds = Set<String>()                   // bg agents launched (keyed by their Agent tool_use id)
     var asyncDoneIds = Set<String>()               // bg agents that reported terminal, same id
     var taskTool: [String: String] = [:]           // bg agent's task_id -> its Agent tool_use id
-    for line in text.split(separator: "\n") {
-        guard let d = line.data(using: .utf8),
-              let row = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else { continue }
+
+    mutating func feed(_ row: [String: Any]) {
         if let c = row["cwd"] as? String { cwd = c }
         if let b = row["gitBranch"] as? String { branch = b }
         if let m = (row["message"] as? [String: Any])?["model"] as? String, !m.isEmpty { model = m }
@@ -161,16 +196,18 @@ func parse(_ path: String) -> [String: Any]? {
             }
         }
     }
-    // Each agent's done-ness is now exact: sync agents by their tool_result, bg agents by whether a
-    // completion notification arrived for their id. No counting, no FIFO guessing.
-    let agents = agentOrder.suffix(12).map { id -> [String: Any] in
-        let done = asyncIds.contains(id) ? asyncDoneIds.contains(id) : doneIds.contains(id)
-        return ["id": id, "desc": agentDesc[id] ?? "agent", "type": agentType[id] ?? "agent",
-                "done": done, "bg": asyncIds.contains(id)]
+    var row: [String: Any] {
+        // Each agent's done-ness is now exact: sync agents by their tool_result, bg agents by whether a
+        // completion notification arrived for their id. No counting, no FIFO guessing.
+        let agents = agentOrder.suffix(12).map { id -> [String: Any] in
+            let done = asyncIds.contains(id) ? asyncDoneIds.contains(id) : doneIds.contains(id)
+            return ["id": id, "desc": agentDesc[id] ?? "agent", "type": agentType[id] ?? "agent",
+                    "done": done, "bg": asyncIds.contains(id)]
+        }
+        let bgRunning = !asyncIds.subtracting(asyncDoneIds).isEmpty
+        let state = self.state == "done" && bgRunning ? "working" : self.state   // bg agents still running
+        return ["title": title, "prompt": prompt, "cwd": cwd, "branch": branch,
+                "activity": activity, "agents": agents, "state": state, "wait": wait,
+                "model": model, "mode": pmode, "ctx": ctx]
     }
-    let bgRunning = !asyncIds.subtracting(asyncDoneIds).isEmpty
-    if state == "done" && bgRunning { state = "working" }        // bg agents still running
-    return ["title": title, "prompt": prompt, "cwd": cwd, "branch": branch,
-            "activity": activity, "agents": agents, "state": state, "wait": wait,
-            "model": model, "mode": pmode, "ctx": ctx]
 }

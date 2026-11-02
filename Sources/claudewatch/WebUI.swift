@@ -37,8 +37,11 @@ let HTML = """
  .c.wait{border-color:#8a6d3b;background:#241f16}
  .top{display:flex;align-items:center;gap:6px}
  .dot{width:7px;height:7px;border-radius:50%;background:#4b5563;flex:none}
- .dot.live{background:#34d399;box-shadow:0 0 6px #34d399;animation:p 1.2s infinite}
- .dot.wait{background:#f0b866;box-shadow:0 0 6px #f0b866;animation:p 1.2s infinite}
+ /* Pulses run a few times when a state starts, then hold — an infinite animation keeps the
+    compositor redrawing at display rate for as long as a session works or waits (battery).
+    Separate keyframe names so working -> waiting restarts the pulse on the same dot node. */
+ .dot.live{background:#34d399;box-shadow:0 0 6px #34d399;animation:p 1.2s 3}
+ .dot.wait{background:#f0b866;box-shadow:0 0 6px #f0b866;animation:pw 1.2s 3}
  .w{color:#f0b866;font-size:11px;font-weight:700;margin-top:4px;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
  .chk{color:#34d399;font:700 12px/1 ui-monospace;flex:none}
@@ -65,9 +68,10 @@ let HTML = """
  .ag .de{flex:1;min-width:0;color:#8b929e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
  .ag.run .ty{color:#f0b866}
  .ag.done .ty{color:#5aa079}
- .ag.run .m{color:#f0b866;animation:p 1s infinite}
+ .ag.run .m{color:#f0b866;animation:p 1s 3}
  .ag.done .m{color:#5aa079}
  @keyframes p{50%{opacity:.25}}
+ @keyframes pw{50%{opacity:.25}}
  .empty{color:#4b5563;font-size:11px;padding:20px 8px;text-align:center}
  .upd{background:#1e2b26;border:1px solid #2f6f4f;color:#7fc8a0;border-radius:8px;cursor:pointer;
     font-size:11px;padding:5px 8px;margin-bottom:6px;text-align:center}
@@ -142,7 +146,24 @@ let HTML = """
  // temp=1: a mode Swift should apply but not remember — the pop-open/snap-back pair, so the
  // mode you picked yourself is still what comes back on the next launch.
  function post(temp){try{window.webkit.messageHandlers.cfg.postMessage(JSON.stringify({mode:MODE,pref:S,temp:temp?1:0}))}catch(e){}}
- function fit(){try{window.webkit.messageHandlers.cfg.postMessage(JSON.stringify({fit:document.body.scrollHeight}))}catch(e){}}
+ var FH=0;   // last height sent: Swift resizes the window on every fit message, so only send changes
+ function fit(){var h=document.body.scrollHeight;if(h==FH)return;FH=h;
+   try{window.webkit.messageHandlers.cfg.postMessage(JSON.stringify({fit:h}))}catch(e){}}
+ // Patch the live DOM to match `html` instead of replacing it: the 2s refresh used to rebuild every
+ // node (restyle, relayout, repaint, restarted animations) even when only an "ago" changed. Nodes
+ // that match by position + tag are kept and only their changed text/attributes are written.
+ // ponytail: positional, no keys — a reorder rewrites rows in place, which is still cheap.
+ function kids(a,b){var bl=[].slice.call(b.childNodes);
+   bl.forEach(function(n,i){var o=a.childNodes[i];if(o)morph(o,n);else a.appendChild(n)});
+   while(a.childNodes.length>bl.length)a.removeChild(a.lastChild)}
+ function morph(a,b){
+   if(a.nodeType!=b.nodeType||a.nodeName!=b.nodeName){a.replaceWith(b);return}
+   if(a.nodeType==3){if(a.data!=b.data)a.data=b.data;return}
+   if(a.nodeType!=1)return;
+   [].slice.call(a.attributes).forEach(function(t){if(!b.hasAttribute(t.name))a.removeAttribute(t.name)});
+   [].forEach.call(b.attributes,function(t){if(a.getAttribute(t.name)!==t.value)a.setAttribute(t.name,t.value)});
+   kids(a,b)}
+ function put(x,html){var t=document.createElement('div');t.innerHTML=html;kids(x,t)}
  // report the header's draggable gaps (header minus its buttons) so Swift can place drag handles
  // there. List mode: the title bar. Bubble mode: the pill's own header strip — everything below
  // it stays clickable so a row click focuses its session instead of moving/expanding the window.
@@ -234,16 +255,16 @@ let HTML = """
      var inner=v.length?v.slice(0,8).map(brow).join('')+
        (v.length>8?'<div class=bmore>+'+(v.length-8)+' more</div>':'')
        :'<div class=bq>all quiet</div>';
-     x.innerHTML='<div class="bwrap'+(waitN?' hot':'')+'">'+head+inner+usageBar()+'</div>';
+     put(x,'<div class="bwrap'+(waitN?' hot':'')+'">'+head+inner+usageBar()+'</div>');
      document.getElementById('bexp').onclick=function(e){e.stopPropagation();setMode('list')};
      fit();dragLayout();return}
    var top=(UPD?'<div class=upd id=upd>⬆ '+(UPDAPP?'v'+esc(UPD)+' available — click to update':'plugin update — v'+esc(UPD))+'</div>':'');
-   if(!v.length){x.innerHTML=top+'<div class=empty>'+(S.hideIdle?'nothing active':'no active sessions')+'</div>'+usageBar();fit();dragLayout();return}
-   x.innerHTML=top+v.map(card).join('')+usageBar();fit();dragLayout()}
+   if(!v.length){put(x,top+'<div class=empty>'+(S.hideIdle?'nothing active':'no active sessions')+'</div>'+usageBar());fit();dragLayout();return}
+   put(x,top+v.map(card).join('')+usageBar());fit();dragLayout()}
  function setUpdate(v,app,plug){UPD=v;UPDAPP=app;UPDPLUG=plug;render(LAST)}   // Swift found a newer tag
  function setUsage(u){USG=u;render(LAST)}   // Swift pushes the cached 5h window (or null to hide)
- // Focus on mousedown, delegated from the stable container: the 2s refresh replaces the cards'
- // innerHTML, so a per-card onclick is lost whenever a redraw lands between press and release.
+ // Focus on mousedown, delegated from the stable container: the 2s refresh can replace a card's
+ // node, so a per-card onclick could be lost whenever a redraw lands between press and release.
  document.getElementById('x').addEventListener('mousedown',function(e){
    if(e.target.closest&&e.target.closest('.upd')){try{window.webkit.messageHandlers.cfg.postMessage(JSON.stringify({update:1}))}catch(_){}return}
    if(e.target.closest&&e.target.closest('.ub.setup')){try{window.webkit.messageHandlers.cfg.postMessage(JSON.stringify({setupUsage:1}))}catch(_){}return}
