@@ -35,6 +35,21 @@ if CommandLine.arguments.contains("--selftest") {
     let d = AppDelegate()
     func ok(_ cond: Bool, _ msg: String) { print(cond ? "  ok  \(msg)" : "  FAIL \(msg)"); if !cond { exit(1) } }
 
+    // Rex: pane identity out of a process's raw args + env, and which client is this Mac's app.
+    let rexArgs = Array("\u{1}\0\0\0/bin/claude\0\0\0REX_BLOCK=fake\0\0HOME=/x\0REX_BLOCK=block:1\0REX_BIN_DIR=/a b/c=d\0".utf8)
+    let rv = rexVars(rexArgs)
+    ok(rv["REX_BLOCK"] == "block:1", "rex: env wins over argv look-alike")
+    ok(rv["REX_BIN_DIR"] == "/a b/c=d", "rex: value keeps spaces and =")
+    ok(rv["HOME"] == nil, "rex: only REX_* vars")
+    let rexClients = """
+    {"clients":[{"client_id":"cli","principal":{"transport":"unix"}},
+    {"client_id":"web","info":{"kind":"app","platform":"web"},"principal":{"transport":"unix"}},
+    {"client_id":"other-mac","info":{"kind":"app","platform":"macos"},"principal":{"transport":"tailscale"}},
+    {"client_id":"mine","info":{"kind":"app","platform":"macos"},"principal":{"transport":"unix"}}]}
+    """
+    ok(localRexClient(Data(rexClients.utf8)) == "mine", "rex: picks this Mac's app")
+    ok(localRexClient(Data("{}".utf8)) == nil, "rex: no app connected → nil")
+
     // Per-session marker glyphs (dropdown + shared with the panel cards).
     ok(d.mark("done") == "✓", "done → ✓")
     ok(d.mark("interrupted") == "⊘", "interrupted → ⊘")

@@ -207,7 +207,7 @@ let HTML = """
    if(S.showUsage&&r.mem) right.push('<b>'+Math.round(r.cpu)+'%</b> cpu · <b>'+r.mem+'</b>MB');
    return '<div class="c'+cls+'" data-t="'+esc(r.tty)+'" data-c="'+esc(r.cwd||'')+'" data-p="'+(r.pid||0)+'">'+
      '<div class=top>'+mark(r)+'<span class=name>'+esc(r.name)+'</span>'+
-     (r.host?'<span class="host'+(['terminal','iterm','warp'].indexOf(r.host)<0?' ide':'')+'">'+esc(r.host)+'</span>':'')+
+     (r.host?'<span class="host'+(['terminal','iterm','warp','rex'].indexOf(r.host)<0?' ide':'')+'">'+esc(r.host)+'</span>':'')+
      (r.branch?'<span class=br>'+esc(r.branch)+'</span>':'')+
      '<span class=ago>'+ago(r.ago)+'</span></div>'+
      (r.state=='waiting'?'<div class=w>▸ needs you · '+esc(r.wait||'input')+

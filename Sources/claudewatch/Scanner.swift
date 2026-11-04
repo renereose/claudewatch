@@ -76,6 +76,7 @@ func terminalApp(forTTY tty: String) -> String {
         if lower.contains("warp.app") { return "Warp" }
         if lower.contains("iterm.app") || lower.contains("iterm2") { return "iTerm2" }
         if lower.contains("terminal.app") { return "Terminal" }
+        if lower.contains("rex server.app") { return "Rex" }   // panes are children of Rex's server, not its app
         guard let ppid = Int32(line.split(whereSeparator: \.isWhitespace).first ?? ""), ppid > 1 else { break }
         pid = ppid
     }
@@ -84,10 +85,12 @@ func terminalApp(forTTY tty: String) -> String {
 
 // Bring the terminal tab on `tty` to the front. (First use prompts for Automation access.)
 // Terminal/iTerm select the exact tab by tty; Warp has no per-tab AppleScript, so it's just activated.
-func focusTerminal(_ tty: String) {
+func focusTerminal(_ tty: String, pid: Int32) {
     guard !tty.isEmpty else { return }
     let script: String
     switch terminalApp(forTTY: tty) {
+    case "Rex":
+        focusRex(pid: pid); return
     case "Warp":
         script = "tell application \"Warp\" to activate"   // ponytail: no per-tab API, app-level focus only
     case "iTerm2":
@@ -128,6 +131,71 @@ func focusTerminal(_ tty: String) {
     try? p.run()
 }
 
+// The REX_* variables out of a process's KERN_PROCARGS2 buffer (argc, exec path, argv, env — NUL-separated).
+// Env comes last, so it wins over any look-alike in argv.
+func rexVars(_ procargs: [UInt8]) -> [String: String] {
+    var vars: [String: String] = [:]
+    for s in procargs.split(separator: 0) {
+        let kv = String(decoding: s, as: UTF8.self).split(separator: "=", maxSplits: 1)
+        if kv.count == 2, kv[0].hasPrefix("REX_") { vars[String(kv[0])] = String(kv[1]) }
+    }
+    return vars
+}
+
+func procargs(_ pid: Int32) -> [UInt8] {
+    var mib = [CTL_KERN, KERN_PROCARGS2, pid], size = 0
+    guard sysctl(&mib, 3, nil, &size, nil, 0) == 0 else { return [] }
+    var buf = [UInt8](repeating: 0, count: size)
+    guard sysctl(&mib, 3, &buf, &size, nil, 0) == 0 else { return [] }
+    return Array(buf.prefix(size))
+}
+
+// This Mac's Rex app in `rex client ls --json`. Web and other-device clients can be connected
+// too, and an action without -C fails once more than one app is.
+func localRexClient(_ json: Data) -> String? {
+    let root = (try? JSONSerialization.jsonObject(with: json)) as? [String: Any]
+    return (root?["clients"] as? [[String: Any]] ?? []).first {
+        let info = $0["info"] as? [String: Any], who = $0["principal"] as? [String: Any]
+        return info?["kind"] as? String == "app" && info?["platform"] as? String == "macos"
+            && who?["transport"] as? String == "unix"
+    }?["client_id"] as? String
+}
+
+// Rex has no AppleScript and its panes can't be found by tty, but each pane's programs inherit
+// REX_BLOCK/REX_SESSION. `rex focus` picks the tab and pane; showing the session in the app is a
+// client action, which Rex only accepts with Remote Control on — we leave that choice to the
+// user and open its settings page, once, if the action is refused.
+func focusRex(pid: Int32) {
+    func open(_ arg: String...) {
+        let p = Process(); p.launchPath = "/usr/bin/open"; p.arguments = arg
+        try? p.run()
+    }
+    let env = rexVars(procargs(pid))
+    // ponytail: bundle id of the only Rex build so far (Rex Beta); look it up from the client's pid if another ships.
+    let appID = "com.superlogical.rex"
+    guard let dir = env["REX_BIN_DIR"], let server = env["REX_SERVER"],
+          let session = env["REX_SESSION"], let block = env["REX_BLOCK"] else { return open("-b", appID) }
+    DispatchQueue.global().async {        // each call can block for rex's 10s timeout if the server hangs
+        func rex(_ args: String...) -> (ok: Bool, out: Data) {
+            let p = Process(); p.executableURL = URL(fileURLWithPath: dir + "/rex")
+            p.arguments = ["-S", server] + args
+            let out = Pipe(); p.standardOutput = out; p.standardError = FileHandle.nullDevice
+            guard (try? p.run()) != nil else { return (false, Data()) }
+            let data = out.fileHandleForReading.readDataToEndOfFile()
+            p.waitUntilExit()
+            return (p.terminationStatus == 0, data)
+        }
+        _ = rex("focus", block)
+        let client = localRexClient(rex("client", "ls", "--json").out)
+        let selected = client.map { rex("-C", $0, "do", "session.select", "session_id=\(session)").ok } ?? true
+        open("-b", appID)                 // also launches the app if it's closed; the server outlives it
+        if !selected, !UserDefaults.standard.bool(forKey: "cw.rexHinted") {
+            UserDefaults.standard.set(true, forKey: "cw.rexHinted")
+            open("rex://settings/server")
+        }
+    }
+}
+
 // CPU% over the interval since the last call for this pid (0 on first sight) and RSS in MB.
 // libproc, not `ps`, for the same battery reason as ttyOf.
 // ponytail: main claude pid only, not its child/subagent tree; lastCPU is unbounded like hostCache.
@@ -164,11 +232,12 @@ func ideInfo(_ pid: Int32) -> (badge: String, app: String) {
     return ("ide", "")
 }
 
-// Short badge for the GUI terminal on `tty` — terminal | iterm | warp (defaults to terminal).
+// Short badge for the GUI terminal on `tty` — terminal | iterm | warp | rex (defaults to terminal).
 func terminalName(_ tty: String) -> String {
     switch terminalApp(forTTY: tty) {
     case "Warp":   return "warp"
     case "iTerm2": return "iterm"
+    case "Rex":    return "rex"
     default:       return "terminal"
     }
 }
@@ -187,7 +256,7 @@ func hostBadge(tty: String, pid: Int32) -> String {
 // Focus a session's home: a terminal tab if it has a tty, else the editor window that hosts it.
 // Editor sessions (the claude-vscode plugin) run under the extension host with no tty.
 func focusSession(tty: String, cwd: String, pid: Int32) {
-    if !tty.isEmpty { focusTerminal(tty); return }
+    if !tty.isEmpty { focusTerminal(tty, pid: pid); return }
     let app = ideInfo(pid).app
     guard !app.isEmpty, !cwd.isEmpty else { return }
     // Re-opening the workspace folder raises the window already on it (VSCode/Cursor dedupe by root).

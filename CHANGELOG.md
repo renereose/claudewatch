@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Rex support.** Sessions in [Rex](https://www.superlogical.com/) get a `rex` badge, and clicking
+  one jumps to its exact session, tab and pane (previously it fell back to Terminal.app). Switching
+  session needs Remote Control on in Rex's settings; Claudewatch opens that page the first time.
+
 ## [1.8.1] - 2026-11-02
 
 ### Fixed

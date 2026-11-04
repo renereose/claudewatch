@@ -68,7 +68,7 @@ logs (`~/.claude/**`) directly and links only against system frameworks.
 - **Works with the IDE plugin** — sessions run from the **Cursor** / **VS Code** Claude Code
   extension are tracked alongside terminal sessions, with the same status, model, mode, and
   "needs you" alerts. A small **host badge** on each card names where a session runs
-  (`terminal` / `iterm` / `warp` / `cursor` / `code` / …).
+  (`terminal` / `iterm` / `warp` / `rex` / `cursor` / `code` / …).
 - **Click to focus** — click a session to jump to where it lives. Terminal tabs are selected
   exactly; IDE sessions raise the editor window on that workspace:
 
@@ -76,6 +76,7 @@ logs (`~/.claude/**`) directly and links only against system frameworks.
   |------|-------|
   | Terminal.app | Exact tab (by tty) |
   | iTerm2 | Exact tab (by tty) |
+  | Rex | Exact session, tab and pane³ |
   | Warp | App brought to front¹ |
   | Cursor / VS Code | Editor window for the session's folder² |
 
@@ -83,6 +84,9 @@ logs (`~/.claude/**`) directly and links only against system frameworks.
   so per-tab focus isn't possible. Anything else falls back to Terminal.app.
   ² IDE plugin sessions have no tty; clicking re-opens the workspace folder, which raises the
   window already on it (or opens one if the folder was closed).
+  ³ Turn on **Remote Control** in Rex's Settings → Rex Server, or only sessions already on screen
+  can be reached — Rex won't accept the "go to session" action without it. Claudewatch opens that
+  page the first time it's refused.
 - **Multi-config aware** — automatically picks up every `~/.claude*` config dir
   (e.g. `CLAUDE_CONFIG_DIR` aliases).
 - **Settings** — opacity, "pop open when input needed", hide idle sessions, float-above-all,
