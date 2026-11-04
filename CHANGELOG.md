@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-11-04
+
 ### Added
 - **Rex support.** Sessions in [Rex](https://www.superlogical.com/) get a `rex` badge, and clicking
   one jumps to its exact session, tab and pane (previously it fell back to Terminal.app). Switching
@@ -218,7 +220,8 @@ First public release.
 - Settings: opacity, pop-open-when-input-needed, hide idle sessions, float-above-all,
   compact view. Window position and preferences persist across launches.
 
-[Unreleased]: https://github.com/renereose/claudewatch/compare/v1.8.1...HEAD
+[Unreleased]: https://github.com/renereose/claudewatch/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/renereose/claudewatch/compare/v1.8.1...v1.9.0
 [1.8.1]: https://github.com/renereose/claudewatch/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/renereose/claudewatch/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/renereose/claudewatch/compare/v1.6.0...v1.7.0
